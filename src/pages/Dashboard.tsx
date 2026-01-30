@@ -1,12 +1,48 @@
 import { motion, AnimatePresence } from 'framer-motion';
+import { useEffect } from 'react';
 import { FileText } from 'lucide-react';
 import Header from '@/components/app/Header';
 import UploadArea from '@/components/app/UploadArea';
 import DocumentCard from '@/components/app/DocumentCard';
-import { useAppStore } from '@/stores/useAppStore';
+import { useAppStore, type Document } from '@/stores/useAppStore';
+import { getApiBaseUrl } from '@/lib/api';
+
+/** Backend document response shape (matches DocumentResponseDto). */
+interface ApiDocument {
+  id: string;
+  name: string;
+  uploadedAt: string;
+  status: 'PENDING' | 'PROCESSING' | 'DONE' | 'FAILED';
+  progress: number;
+  size?: number;
+}
 
 const Dashboard = () => {
   const documents = useAppStore((state) => state.documents);
+  const setDocuments = useAppStore((state) => state.setDocuments);
+  const accessToken = useAppStore((state) => state.accessToken);
+
+  // Load documents from backend so sidebar and chat use real document IDs.
+  useEffect(() => {
+    if (!accessToken) return;
+    const url = `${getApiBaseUrl()}/documents`;
+    fetch(url, { headers: { Authorization: `Bearer ${accessToken}` } })
+      .then((res) => (res.ok ? res.json() : Promise.reject(new Error('Failed to load documents'))))
+      .then((data: ApiDocument[]) => {
+        const docs: Document[] = data.map((d) => ({
+          id: d.id,
+          name: d.name,
+          uploadedAt: new Date(d.uploadedAt),
+          status: d.status,
+          progress: d.progress,
+          size: d.size,
+        }));
+        setDocuments(docs);
+      })
+      .catch(() => {
+        // Ignore: user may be offline or backend unreachable; documents stay as-is
+      });
+  }, [accessToken, setDocuments]);
 
   return (
     <>

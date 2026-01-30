@@ -6,6 +6,12 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { useAppStore } from '@/stores/useAppStore';
+import { getApiBaseUrl, getApiErrorMessage } from '@/lib/api';
+
+interface AuthResponse {
+  user: { id: string; email: string; name: string };
+  accessToken: string;
+}
 
 const Login = () => {
   const navigate = useNavigate();
@@ -18,20 +24,45 @@ const Login = () => {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
+    if (!email.trim() || !password) {
+      setError('Please enter your email and password');
+      return;
+    }
     setIsLoading(true);
 
-    // Simulate API call
-    await new Promise((resolve) => setTimeout(resolve, 1500));
+    try {
+      const res = await fetch(`${getApiBaseUrl()}/auth/login`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: email.trim(), password }),
+      });
+      const data = (await res.json()) as AuthResponse | { message?: string; statusCode?: number };
 
-    // Mock authentication
-    if (email && password) {
-      setAuthenticated(true, { id: '1', email, name: email.split('@')[0] });
+      if (!res.ok) {
+        const message = typeof (data as { message?: string }).message === 'string'
+          ? (data as { message: string }).message
+          : Array.isArray((data as { message?: string[] }).message)
+            ? (data as { message: string[] }).message?.[0]
+            : 'Sign in failed';
+        setError(message || 'Invalid email or password');
+        setIsLoading(false);
+        return;
+      }
+
+      const { user, accessToken } = data as AuthResponse;
+      if (!user || !accessToken) {
+        setError('Invalid response from server');
+        setIsLoading(false);
+        return;
+      }
+      setAuthenticated(true, user, accessToken);
       navigate('/app');
-    } else {
-      setError('Please enter your email and password');
+    } catch (err) {
+      // Show actual HTTP/network error cause (e.g. "Failed to fetch"), not a generic message.
+      setError(getApiErrorMessage(err, 'Sign in failed. Please try again.'));
+    } finally {
+      setIsLoading(false);
     }
-
-    setIsLoading(false);
   };
 
   return (

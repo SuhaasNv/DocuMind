@@ -9,84 +9,162 @@ import ChatInput from '@/components/chat/ChatInput';
 import EmptyChat from '@/components/chat/EmptyChat';
 import TypingIndicator from '@/components/chat/TypingIndicator';
 import { useAppStore, Message } from '@/stores/useAppStore';
+import { streamChat } from '@/lib/sseChat';
+import { getApiBaseUrl } from '@/lib/api';
 
-// Sample responses for demo
-const sampleResponses = [
-  "Based on the document, the main topics covered include project management methodologies, stakeholder communication, and risk assessment strategies. The document emphasizes the importance of clear documentation and regular status updates.",
-  "The key findings suggest that implementing agile practices led to a 40% improvement in delivery times. The document also highlights the importance of cross-functional team collaboration.",
-  "According to the document, there are three main recommendations:\n\n1. **Improve communication channels** between teams\n2. **Implement automated testing** to reduce bugs\n3. **Establish regular retrospectives** for continuous improvement",
-  "The document outlines a comprehensive approach to data analysis, including:\n\n```python\ndef analyze_data(dataset):\n    # Process and clean data\n    cleaned = preprocess(dataset)\n    return generate_insights(cleaned)\n```\n\nThis methodology has proven effective in various scenarios.",
-];
+const THROTTLE_MS = 40;
+const SCROLL_THRESHOLD_PX = 120;
 
 const ChatPage = () => {
   const { documentId } = useParams<{ documentId: string }>();
   const navigate = useNavigate();
   const messagesEndRef = useRef<HTMLDivElement>(null);
-  
-  const { documents, conversations, addMessage, updateMessage, setStreaming } = useAppStore();
+  const scrollContainerRef = useRef<HTMLDivElement>(null);
+  const streamAbortRef = useRef<AbortController | null>(null);
+  const isMountedRef = useRef(true);
+
+  const {
+    documents,
+    conversations,
+    addMessage,
+    updateMessage,
+    setStreaming,
+    setMessageSources,
+    accessToken,
+  } = useAppStore();
+
   const document = documents.find((doc) => doc.id === documentId);
   const conversation = documentId ? conversations[documentId] : null;
   const messages = conversation?.messages || [];
+  const isStreaming = messages.some((m) => m.isStreaming);
 
-  const [isTyping, setIsTyping] = useState(false);
+  const scrollToBottom = useCallback((behavior: ScrollBehavior = 'smooth') => {
+    messagesEndRef.current?.scrollIntoView({ behavior });
+  }, []);
 
-  const scrollToBottom = useCallback(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  const isNearBottom = useCallback(() => {
+    const el = scrollContainerRef.current;
+    if (!el) return true;
+    const { scrollTop, scrollHeight, clientHeight } = el;
+    return scrollHeight - scrollTop - clientHeight < SCROLL_THRESHOLD_PX;
   }, []);
 
   useEffect(() => {
-    scrollToBottom();
-  }, [messages, isTyping, scrollToBottom]);
-
-  const simulateStreaming = async (messageId: string, fullText: string) => {
-    if (!documentId) return;
-    
-    let currentText = '';
-    setStreaming(documentId, messageId, true);
-
-    for (let i = 0; i < fullText.length; i++) {
-      currentText += fullText[i];
-      updateMessage(documentId, messageId, currentText);
-      
-      // Variable delay for natural feel
-      const delay = fullText[i] === ' ' ? 20 : fullText[i] === '\n' ? 50 : 10;
-      await new Promise((resolve) => setTimeout(resolve, delay));
-    }
-
-    setStreaming(documentId, messageId, false);
-  };
-
-  const handleSendMessage = async (content: string) => {
-    if (!documentId) return;
-
-    // Add user message
-    const userMessage: Message = {
-      id: `msg-${Date.now()}`,
-      role: 'user',
-      content,
-      timestamp: new Date(),
+    isMountedRef.current = true;
+    return () => {
+      isMountedRef.current = false;
+      streamAbortRef.current?.abort();
+      const docId = documentId ?? null;
+      const conv = docId ? useAppStore.getState().conversations[docId] : null;
+      const streamingMsg = conv?.messages.find((m) => m.isStreaming);
+      if (docId && streamingMsg) {
+        useAppStore.getState().setStreaming(docId, streamingMsg.id, false);
+      }
     };
-    addMessage(documentId, userMessage);
+  }, [documentId]);
 
-    // Show typing indicator
-    setIsTyping(true);
-    await new Promise((resolve) => setTimeout(resolve, 1000 + Math.random() * 1000));
-    setIsTyping(false);
+  useEffect(() => {
+    if (!isStreaming) return;
+    if (isNearBottom()) scrollToBottom();
+  }, [messages, isStreaming, isNearBottom, scrollToBottom]);
 
-    // Add AI response
-    const responseText = sampleResponses[Math.floor(Math.random() * sampleResponses.length)];
-    const aiMessage: Message = {
-      id: `msg-${Date.now() + 1}`,
-      role: 'assistant',
-      content: '',
-      timestamp: new Date(),
-      isStreaming: true,
-    };
-    addMessage(documentId, aiMessage);
+  const handleSendMessage = useCallback(
+    async (content: string) => {
+      if (!documentId) return;
 
-    // Simulate streaming
-    await simulateStreaming(aiMessage.id, responseText);
-  };
+      streamAbortRef.current?.abort();
+      streamAbortRef.current = new AbortController();
+      const signal = streamAbortRef.current.signal;
+      const currentDocumentId = documentId;
+
+      const userMessage: Message = {
+        id: `msg-${Date.now()}`,
+        role: 'user',
+        content,
+        timestamp: new Date(),
+      };
+      addMessage(documentId, userMessage);
+
+      const assistantId = `msg-${Date.now() + 1}`;
+      const assistantMessage: Message = {
+        id: assistantId,
+        role: 'assistant',
+        content: '',
+        timestamp: new Date(),
+        isStreaming: true,
+      };
+      addMessage(documentId, assistantMessage);
+
+      let buffer = '';
+      let fullContent = '';
+      let throttleTimer: ReturnType<typeof setTimeout> | null = null;
+
+      const flush = () => {
+        if (!isMountedRef.current || signal.aborted || currentDocumentId !== documentId) return;
+        if (buffer === '') {
+          throttleTimer = null;
+          return;
+        }
+        fullContent += buffer;
+        buffer = '';
+        throttleTimer = null;
+        updateMessage(currentDocumentId, assistantId, fullContent);
+      };
+
+      const scheduleFlush = () => {
+        if (throttleTimer !== null) return;
+        throttleTimer = setTimeout(flush, THROTTLE_MS);
+      };
+
+      await streamChat(
+        documentId,
+        content,
+        {
+          onDelta: (chunk) => {
+            if (signal.aborted || !isMountedRef.current) return;
+            buffer += chunk;
+            scheduleFlush();
+          },
+          onDone: (sources) => {
+            if (throttleTimer !== null) {
+              clearTimeout(throttleTimer);
+              throttleTimer = null;
+            }
+            flush();
+            if (!isMountedRef.current || signal.aborted) return;
+            if (currentDocumentId !== documentId) return;
+            setStreaming(documentId, assistantId, false);
+            if (sources.length > 0) setMessageSources(documentId, assistantId, sources);
+          },
+          onError: (message) => {
+            if (throttleTimer !== null) {
+              clearTimeout(throttleTimer);
+              throttleTimer = null;
+            }
+            if (!isMountedRef.current || signal.aborted) return;
+            if (currentDocumentId !== documentId) return;
+            updateMessage(documentId, assistantId, `Sorry, something went wrong: ${message}`);
+            setStreaming(documentId, assistantId, false);
+          },
+        },
+        {
+          signal,
+          getToken: () => accessToken,
+          baseUrl: getApiBaseUrl(),
+        }
+      );
+
+      if (throttleTimer !== null) clearTimeout(throttleTimer);
+    },
+    [
+      documentId,
+      addMessage,
+      updateMessage,
+      setStreaming,
+      setMessageSources,
+      accessToken,
+    ]
+  );
 
   if (!document) {
     return (
@@ -109,8 +187,7 @@ const ChatPage = () => {
 
   return (
     <>
-      {/* Header */}
-      <header className="h-16 border-b border-border bg-background/80 backdrop-blur-lg flex items-center px-6 sticky top-0 z-40">
+      <header className="h-16 border-b border-border bg-background/80 backdrop-blur-lg flex items-center px-6 sticky top-0 z-40 shrink-0">
         <Button
           variant="ghost"
           size="icon"
@@ -130,10 +207,11 @@ const ChatPage = () => {
         </div>
       </header>
 
-      {/* Chat container */}
-      <div className="flex-1 flex flex-col overflow-hidden">
-        {/* Messages area */}
-        <div className="flex-1 overflow-y-auto">
+      <div className="flex-1 flex flex-col overflow-hidden min-h-0">
+        <div
+          ref={scrollContainerRef}
+          className="flex-1 overflow-y-auto min-h-0"
+        >
           {messages.length === 0 ? (
             <EmptyChat />
           ) : (
@@ -143,22 +221,19 @@ const ChatPage = () => {
                   <MessageBubble key={message.id} message={message} />
                 ))}
               </AnimatePresence>
-              
-              {/* Typing indicator */}
+
               <AnimatePresence>
-                {isTyping && <TypingIndicator />}
+                {isStreaming && <TypingIndicator />}
               </AnimatePresence>
 
-              {/* Scroll anchor */}
               <div ref={messagesEndRef} />
             </div>
           )}
         </div>
 
-        {/* Input */}
         <ChatInput
           onSend={handleSendMessage}
-          isLoading={isTyping}
+          isLoading={isStreaming}
           disabled={document.status !== 'DONE'}
         />
       </div>

@@ -1,4 +1,5 @@
 import { create } from 'zustand';
+import { persist } from 'zustand/middleware';
 
 export type DocumentStatus = 'PENDING' | 'PROCESSING' | 'DONE' | 'FAILED';
 
@@ -11,12 +12,18 @@ export interface Document {
   size?: number;
 }
 
+export interface ChatSource {
+  chunkIndex: number;
+  score: number;
+}
+
 export interface Message {
   id: string;
   role: 'user' | 'assistant';
   content: string;
   timestamp: Date;
   isStreaming?: boolean;
+  sources?: ChatSource[];
 }
 
 export interface Conversation {
@@ -30,6 +37,7 @@ interface AppState {
   // Auth state
   isAuthenticated: boolean;
   user: { id: string; email: string; name: string } | null;
+  accessToken: string | null;
 
   // Documents state
   documents: Document[];
@@ -44,7 +52,8 @@ interface AppState {
   isUploading: boolean;
 
   // Actions
-  setAuthenticated: (auth: boolean, user?: { id: string; email: string; name: string } | null) => void;
+  setAuthenticated: (auth: boolean, user?: { id: string; email: string; name: string } | null, accessToken?: string | null) => void;
+  setDocuments: (documents: Document[]) => void;
   addDocument: (doc: Document) => void;
   updateDocument: (id: string, updates: Partial<Document>) => void;
   removeDocument: (id: string) => void;
@@ -52,24 +61,46 @@ interface AppState {
   addMessage: (documentId: string, message: Message) => void;
   updateMessage: (documentId: string, messageId: string, content: string) => void;
   setStreaming: (documentId: string, messageId: string, isStreaming: boolean) => void;
+  setMessageSources: (documentId: string, messageId: string, sources: ChatSource[]) => void;
   toggleSidebar: () => void;
   setSidebarOpen: (open: boolean) => void;
   setUploading: (uploading: boolean) => void;
 }
 
-export const useAppStore = create<AppState>((set, get) => ({
-  // Initial state
-  isAuthenticated: false,
-  user: null,
-  documents: [],
-  selectedDocumentId: null,
-  conversations: {},
-  currentConversationId: null,
-  isSidebarOpen: true,
-  isUploading: false,
+const AUTH_STORAGE_KEY = 'insight-garden-auth';
 
-  // Actions
-  setAuthenticated: (auth, user = null) => set({ isAuthenticated: auth, user }),
+export const useAppStore = create<AppState>()(
+  persist(
+    (set, get) => ({
+      // Initial state
+      isAuthenticated: false,
+      user: null,
+      accessToken: null,
+      documents: [],
+      selectedDocumentId: null,
+      conversations: {},
+      currentConversationId: null,
+      isSidebarOpen: true,
+      isUploading: false,
+
+      // Actions
+      setAuthenticated: (auth, user = null, accessToken: string | null = null) =>
+        set({ isAuthenticated: auth, user, accessToken: auth ? accessToken ?? null : null }),
+
+      setDocuments: (documents) => set((state) => {
+        const conversations = { ...state.conversations };
+        for (const doc of documents) {
+          if (!conversations[doc.id]) {
+            conversations[doc.id] = {
+              id: `conv-${doc.id}`,
+              documentId: doc.id,
+              messages: [],
+              createdAt: new Date(),
+            };
+          }
+        }
+        return { documents, conversations };
+      }),
 
   addDocument: (doc) => set((state) => ({
     documents: [doc, ...state.documents],
@@ -153,7 +184,34 @@ export const useAppStore = create<AppState>((set, get) => ({
     };
   }),
 
+  setMessageSources: (documentId, messageId, sources) => set((state) => {
+    const conversation = state.conversations[documentId];
+    if (!conversation) return state;
+
+    return {
+      conversations: {
+        ...state.conversations,
+        [documentId]: {
+          ...conversation,
+          messages: conversation.messages.map((msg) =>
+            msg.id === messageId ? { ...msg, sources } : msg
+          ),
+        },
+      },
+    };
+  }),
+
   toggleSidebar: () => set((state) => ({ isSidebarOpen: !state.isSidebarOpen })),
   setSidebarOpen: (open) => set({ isSidebarOpen: open }),
   setUploading: (uploading) => set({ isUploading: uploading }),
-}));
+    }),
+    {
+      name: AUTH_STORAGE_KEY,
+      partialize: (state) => ({
+        isAuthenticated: state.isAuthenticated,
+        user: state.user,
+        accessToken: state.accessToken,
+      }),
+    },
+  ),
+);

@@ -1,3 +1,4 @@
+import { memo } from 'react';
 import { cn } from '@/lib/utils';
 import { Message } from '@/stores/useAppStore';
 import { Bot, User } from 'lucide-react';
@@ -8,7 +9,7 @@ interface MessageBubbleProps {
   message: Message;
 }
 
-const MessageBubble = ({ message }: MessageBubbleProps) => {
+const MessageBubble = memo(function MessageBubble({ message }: MessageBubbleProps) {
   const isUser = message.role === 'user';
 
   return (
@@ -40,52 +41,54 @@ const MessageBubble = ({ message }: MessageBubbleProps) => {
         )}
       >
         <div className="prose prose-invert prose-sm max-w-none">
-          <ReactMarkdown
-            components={{
-              code: ({ className, children, ...props }) => {
-                const match = /language-(\w+)/.exec(className || '');
-                const isInline = !match;
-                
-                return isInline ? (
-                  <code
-                    className="px-1.5 py-0.5 rounded bg-muted text-primary text-sm font-mono"
-                    {...props}
-                  >
-                    {children}
-                  </code>
-                ) : (
-                  <pre className="bg-muted/50 rounded-lg p-4 overflow-x-auto my-3">
-                    <code className="text-sm font-mono text-foreground" {...props}>
+          {message.isStreaming ? (
+            /* While streaming: render text + cursor inline so cursor stays at end of text */
+            <p className="mb-0 whitespace-pre-wrap break-words">
+              {message.content}
+              <span className="streaming-cursor" />
+            </p>
+          ) : (
+            <ReactMarkdown
+              components={{
+                code: ({ className, children, ...props }) => {
+                  const match = /language-(\w+)/.exec(className || '');
+                  const isInline = !match;
+                  return isInline ? (
+                    <code
+                      className="px-1.5 py-0.5 rounded bg-muted text-primary text-sm font-mono"
+                      {...props}
+                    >
                       {children}
                     </code>
-                  </pre>
-                );
-              },
-              p: ({ children }) => <p className="mb-2 last:mb-0">{children}</p>,
-              ul: ({ children }) => <ul className="list-disc pl-4 mb-2">{children}</ul>,
-              ol: ({ children }) => <ol className="list-decimal pl-4 mb-2">{children}</ol>,
-              li: ({ children }) => <li className="mb-1">{children}</li>,
-              h1: ({ children }) => <h1 className="text-lg font-bold mb-2">{children}</h1>,
-              h2: ({ children }) => <h2 className="text-base font-bold mb-2">{children}</h2>,
-              h3: ({ children }) => <h3 className="text-sm font-bold mb-1">{children}</h3>,
-              blockquote: ({ children }) => (
-                <blockquote className="border-l-2 border-primary pl-4 italic text-muted-foreground">
-                  {children}
-                </blockquote>
-              ),
-            }}
-          >
-            {message.content}
-          </ReactMarkdown>
-          
-          {/* Streaming cursor */}
-          {message.isStreaming && (
-            <span className="streaming-cursor" />
+                  ) : (
+                    <pre className="bg-muted/50 rounded-lg p-4 overflow-x-auto my-3">
+                      <code className="text-sm font-mono text-foreground" {...props}>
+                        {children}
+                      </code>
+                    </pre>
+                  );
+                },
+                p: ({ children }) => <p className="mb-2 last:mb-0">{children}</p>,
+                ul: ({ children }) => <ul className="list-disc pl-4 mb-2">{children}</ul>,
+                ol: ({ children }) => <ol className="list-decimal pl-4 mb-2">{children}</ol>,
+                li: ({ children }) => <li className="mb-1">{children}</li>,
+                h1: ({ children }) => <h1 className="text-lg font-bold mb-2">{children}</h1>,
+                h2: ({ children }) => <h2 className="text-base font-bold mb-2">{children}</h2>,
+                h3: ({ children }) => <h3 className="text-sm font-bold mb-1">{children}</h3>,
+                blockquote: ({ children }) => (
+                  <blockquote className="border-l-2 border-primary pl-4 italic text-muted-foreground">
+                    {children}
+                  </blockquote>
+                ),
+              }}
+            >
+              {message.content}
+            </ReactMarkdown>
           )}
         </div>
       </div>
     </motion.div>
   );
-};
+});
 
 export default MessageBubble;

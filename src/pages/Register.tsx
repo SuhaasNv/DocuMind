@@ -6,6 +6,12 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { useAppStore } from '@/stores/useAppStore';
+import { getApiBaseUrl, getApiErrorMessage } from '@/lib/api';
+
+interface AuthResponse {
+  user: { id: string; email: string; name: string };
+  accessToken: string;
+}
 
 const Register = () => {
   const navigate = useNavigate();
@@ -19,20 +25,46 @@ const Register = () => {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
+    if (!name.trim() || !email.trim() || !password) {
+      setError('Please fill in all fields');
+      return;
+    }
+    if (password.length < 8) {
+      setError('Password must be at least 8 characters');
+      return;
+    }
     setIsLoading(true);
 
-    // Simulate API call
-    await new Promise((resolve) => setTimeout(resolve, 1500));
+    try {
+      const res = await fetch(`${getApiBaseUrl()}/auth/register`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: name.trim(), email: email.trim(), password }),
+      });
+      const data = (await res.json()) as AuthResponse | { message?: string | string[] };
 
-    // Mock registration
-    if (name && email && password) {
-      setAuthenticated(true, { id: '1', email, name });
+      if (!res.ok) {
+        const msg = (data as { message?: string | string[] }).message;
+        const message = typeof msg === 'string' ? msg : Array.isArray(msg) ? msg[0] : 'Registration failed';
+        setError(message || 'Registration failed');
+        setIsLoading(false);
+        return;
+      }
+
+      const { user, accessToken } = data as AuthResponse;
+      if (!user || !accessToken) {
+        setError('Invalid response from server');
+        setIsLoading(false);
+        return;
+      }
+      setAuthenticated(true, user, accessToken);
       navigate('/app');
-    } else {
-      setError('Please fill in all fields');
+    } catch (err) {
+      // Show actual HTTP/network error cause (e.g. "Failed to fetch"), not a generic message.
+      setError(getApiErrorMessage(err, 'Registration failed. Please try again.'));
+    } finally {
+      setIsLoading(false);
     }
-
-    setIsLoading(false);
   };
 
   return (

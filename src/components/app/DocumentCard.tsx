@@ -4,6 +4,7 @@ import { Link } from 'react-router-dom';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 import { Document, DocumentStatus, useAppStore } from '@/stores/useAppStore';
+import { getApiBaseUrl } from '@/lib/api';
 import { formatDistanceToNow } from 'date-fns';
 
 interface DocumentCardProps {
@@ -39,12 +40,23 @@ const statusConfig: Record<DocumentStatus, {
 
 const DocumentCard = ({ document }: DocumentCardProps) => {
   const removeDocument = useAppStore((state) => state.removeDocument);
+  const accessToken = useAppStore((state) => state.accessToken);
   const status = statusConfig[document.status];
   const StatusIcon = status.icon;
 
-  const handleDelete = (e: React.MouseEvent) => {
+  const handleDelete = async (e: React.MouseEvent) => {
     e.preventDefault();
     e.stopPropagation();
+    if (accessToken) {
+      try {
+        await fetch(`${getApiBaseUrl()}/documents/${document.id}`, {
+          method: 'DELETE',
+          headers: { Authorization: `Bearer ${accessToken}` },
+        });
+      } catch {
+        // Remove from UI anyway; backend may be unreachable
+      }
+    }
     removeDocument(document.id);
   };
 

@@ -1,14 +1,29 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Upload, FileText, X, AlertCircle } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 import { useAppStore } from '@/stores/useAppStore';
+import { getApiBaseUrl } from '@/lib/api';
+import type { Document } from '@/stores/useAppStore';
+
+/** Backend document response shape (matches DocumentResponseDto). */
+interface ApiDocument {
+  id: string;
+  name: string;
+  uploadedAt: string;
+  status: 'PENDING' | 'PROCESSING' | 'DONE' | 'FAILED';
+  progress: number;
+  size?: number;
+}
+
+const POLL_INTERVAL_MS = 2000;
 
 const UploadArea = () => {
   const [isDragOver, setIsDragOver] = useState(false);
   const [uploadError, setUploadError] = useState<string | null>(null);
-  const { addDocument, setUploading, isUploading } = useAppStore();
+  const { addDocument, updateDocument, setUploading, isUploading, accessToken } = useAppStore();
+  const pollRef = useRef<Record<string, ReturnType<typeof setInterval>>>({});
 
   const handleDragOver = useCallback((e: React.DragEvent) => {
     e.preventDefault();
@@ -23,7 +38,6 @@ const UploadArea = () => {
   const handleDrop = useCallback((e: React.DragEvent) => {
     e.preventDefault();
     setIsDragOver(false);
-    
     const files = Array.from(e.dataTransfer.files);
     handleFiles(files);
   }, []);
@@ -33,56 +47,90 @@ const UploadArea = () => {
     handleFiles(files);
   }, []);
 
-  const handleFiles = async (files: File[]) => {
-    const pdfFiles = files.filter((file) => file.type === 'application/pdf');
-    
-    if (pdfFiles.length === 0) {
-      setUploadError('Please upload PDF files only');
-      return;
-    }
+  const toStoreDocument = (d: ApiDocument): Document => ({
+    id: d.id,
+    name: d.name,
+    uploadedAt: new Date(d.uploadedAt),
+    status: d.status,
+    progress: d.progress,
+    size: d.size,
+  });
 
-    setUploadError(null);
-    setUploading(true);
+  const pollDocumentStatus = useCallback((docId: string) => {
+    if (pollRef.current[docId]) return;
+    const token = useAppStore.getState().accessToken;
+    if (!token) return;
 
-    for (const file of pdfFiles) {
-      const docId = `doc-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
-      
-      // Add document with PENDING status
-      addDocument({
-        id: docId,
-        name: file.name,
-        uploadedAt: new Date(),
-        status: 'PENDING',
-        progress: 0,
-        size: file.size,
-      });
-
-      // Simulate upload and processing
-      simulateProcessing(docId);
-    }
-
-    setUploading(false);
-  };
-
-  const simulateProcessing = (docId: string) => {
-    const { updateDocument } = useAppStore.getState();
-    let progress = 0;
-
-    // Start processing
-    updateDocument(docId, { status: 'PROCESSING', progress: 0 });
-
-    const interval = setInterval(() => {
-      progress += Math.random() * 15;
-      
-      if (progress >= 100) {
-        progress = 100;
-        clearInterval(interval);
-        updateDocument(docId, { status: 'DONE', progress: 100 });
-      } else {
-        updateDocument(docId, { progress: Math.min(progress, 99) });
+    const poll = async () => {
+      try {
+        const res = await fetch(`${getApiBaseUrl()}/documents/${docId}`, {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        if (!res.ok) return;
+        const data = (await res.json()) as ApiDocument;
+        useAppStore.getState().updateDocument(docId, {
+          status: data.status,
+          progress: data.progress,
+        });
+        if (data.status === 'DONE' || data.status === 'FAILED') {
+          if (pollRef.current[docId]) {
+            clearInterval(pollRef.current[docId]);
+            delete pollRef.current[docId];
+          }
+        }
+      } catch {
+        // ignore network errors; will retry next interval
       }
-    }, 500);
-  };
+    };
+
+    poll();
+    pollRef.current[docId] = setInterval(poll, POLL_INTERVAL_MS);
+  }, []);
+
+  const handleFiles = useCallback(
+    async (files: File[]) => {
+      const pdfFiles = files.filter((file) => file.type === 'application/pdf');
+      if (pdfFiles.length === 0) {
+        setUploadError('Please upload PDF files only');
+        return;
+      }
+      if (!accessToken) {
+        setUploadError('Please log in to upload documents');
+        return;
+      }
+
+      setUploadError(null);
+      setUploading(true);
+
+      for (const file of pdfFiles) {
+        try {
+          const formData = new FormData();
+          formData.append('file', file);
+          const res = await fetch(`${getApiBaseUrl()}/documents/upload`, {
+            method: 'POST',
+            headers: { Authorization: `Bearer ${accessToken}` },
+            body: formData,
+          });
+          const data = (await res.json()) as ApiDocument | { message?: string; statusCode?: number };
+          if (!res.ok) {
+            const msg = typeof (data as { message?: string }).message === 'string'
+              ? (data as { message: string }).message
+              : 'Upload failed';
+            setUploadError(msg);
+            continue;
+          }
+          const doc = toStoreDocument(data as ApiDocument);
+          addDocument(doc);
+          pollDocumentStatus(doc.id);
+        } catch (err) {
+          setUploadError(err instanceof Error ? err.message : 'Upload failed');
+        }
+      }
+
+      setUploading(false);
+    },
+    [accessToken, addDocument, setUploading, pollDocumentStatus],
+  );
 
   return (
     <div className="mb-8">
@@ -103,12 +151,8 @@ const UploadArea = () => {
             isUploading && 'pointer-events-none opacity-60'
           )}
         >
-          {/* Upload icon */}
           <motion.div
-            animate={{
-              y: isDragOver ? -10 : 0,
-              scale: isDragOver ? 1.1 : 1,
-            }}
+            animate={{ y: isDragOver ? -10 : 0, scale: isDragOver ? 1.1 : 1 }}
             transition={{ duration: 0.2 }}
             className="w-16 h-16 rounded-2xl bg-primary/10 flex items-center justify-center mx-auto mb-6"
           >
@@ -142,22 +186,21 @@ const UploadArea = () => {
         </div>
       </motion.div>
 
-      {/* Error message */}
       <AnimatePresence>
         {uploadError && (
           <motion.div
             initial={{ opacity: 0, y: -10 }}
-            animate={{ opacity: 1, y: 0 }}
+            animate={{ opacity: 1, y: -10 }}
             exit={{ opacity: 0, y: -10 }}
             className="mt-4 p-4 rounded-lg bg-destructive/10 border border-destructive/30 flex items-center gap-3"
           >
-            <AlertCircle className="w-5 h-5 text-destructive" />
+            <AlertCircle className="w-5 h-5 text-destructive shrink-0" />
             <p className="text-sm text-destructive flex-1">{uploadError}</p>
             <Button
               variant="ghost"
               size="icon"
               onClick={() => setUploadError(null)}
-              className="text-destructive hover:bg-destructive/20"
+              className="text-destructive hover:bg-destructive/20 shrink-0"
             >
               <X className="w-4 h-4" />
             </Button>

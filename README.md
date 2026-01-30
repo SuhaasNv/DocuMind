@@ -1,6 +1,57 @@
-# Welcome to your Lovable project
+# Insight Garden
 
-## Project info
+Document-centric RAG system: Vite + React frontend, NestJS backend, PostgreSQL (pgvector), Redis, Ollama.
+
+## Infrastructure and backend startup
+
+Backend and frontend run on the host. Only Postgres and Redis run in Docker (no Dockerfile; no containerized app).
+
+### 1. Start Postgres + Redis
+
+From the **repo root**:
+
+```bash
+docker compose up -d
+```
+
+- **PostgreSQL** (with pgvector): port `5432`, user `user`, password `password`, database `insight_garden`.
+- **Redis**: port `6379`.
+
+### 2. Backend: env, migrate, run
+
+```bash
+cd backend
+cp .env.example .env
+# Edit .env if needed; defaults match docker-compose (DATABASE_URL, REDIS_HOST, REDIS_PORT).
+npx prisma migrate dev
+npm run dev
+```
+
+Backend runs at `http://localhost:3000`. If the database is unreachable, the process exits with an error (no silent failure).
+
+### 3. Frontend
+
+```bash
+# From repo root
+npm install
+npm run dev
+```
+
+Frontend runs at `http://localhost:8080`. Set `VITE_API_URL=http://localhost:3000` in `.env` if the API is elsewhere.
+
+### 4. Auth and chat
+
+- **Register:** `POST /auth/register` → `{ user, accessToken }`.
+- **Login:** `POST /auth/login` → `{ user, accessToken }`.
+- Use `Authorization: Bearer <accessToken>` for `/documents/*` and `/documents/:id/chat/stream` (SSE).
+
+### 5. Verify data (optional)
+
+From `backend`: `npx prisma studio` to open Prisma Studio and confirm users/documents in Postgres.
+
+---
+
+## Project info (Lovable)
 
 **URL**: https://lovable.dev/projects/REPLACE_WITH_PROJECT_ID
 

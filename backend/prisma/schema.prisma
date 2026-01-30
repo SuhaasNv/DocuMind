@@ -1,0 +1,62 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client"
+  output   = "../generated/prisma"
+}
+
+// Connection URL for Migrate is in prisma.config.ts (Prisma 7). PrismaClient uses DATABASE_URL at runtime.
+datasource db {
+  provider = "postgresql"
+}
+
+enum DocumentStatus {
+  PENDING
+  PROCESSING
+  DONE
+  FAILED
+}
+
+model User {
+  id           String    @id @default(cuid())
+  email        String    @unique
+  passwordHash String    @map("password_hash")
+  name         String
+  createdAt    DateTime  @default(now()) @map("created_at")
+  updatedAt    DateTime  @updatedAt @map("updated_at")
+  documents    Document[]
+
+  @@map("users")
+}
+
+model Document {
+  id         String         @id @default(cuid())
+  userId     String         @map("user_id")
+  name       String
+  status     DocumentStatus @default(PENDING)
+  progress   Int            @default(0)
+  size       Int?           // bytes
+  filePath   String?        @map("file_path") // relative path under uploads dir
+  uploadedAt DateTime       @default(now()) @map("uploaded_at")
+  updatedAt  DateTime       @updatedAt @map("updated_at")
+  user       User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  chunks     DocumentChunk[]
+
+  @@index([userId])
+  @@map("documents")
+}
+
+// Embedding column is vector(dimension); use raw SQL for insert/query. Dimension from EMBEDDING_DIMENSION env.
+model DocumentChunk {
+  id         String   @id @default(cuid())
+  documentId String   @map("document_id")
+  content    String   @db.Text
+  embedding  Unsupported("vector(1536)")? // dimension from migration; insert via raw SQL
+  chunkIndex Int      @map("chunk_index")
+  createdAt  DateTime @default(now()) @map("created_at")
+  document   Document @relation(fields: [documentId], references: [id], onDelete: Cascade)
+
+  @@index([documentId])
+  @@map("document_chunks")
+}
