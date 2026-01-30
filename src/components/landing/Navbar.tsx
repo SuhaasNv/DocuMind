@@ -1,9 +1,18 @@
 import { motion } from 'framer-motion';
 import { Link } from 'react-router-dom';
-import { FileText } from 'lucide-react';
+import { FileText, LogOut } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { useAppStore } from '@/stores/useAppStore';
 
 const Navbar = () => {
+  const isAuthenticated = useAppStore((s) => s.isAuthenticated);
+  const { setAuthenticated, abortActiveSSE } = useAppStore();
+
+  const handleLogout = () => {
+    abortActiveSSE?.();
+    setAuthenticated(false, null, null);
+  };
+
   return (
     <motion.header
       initial={{ opacity: 0, y: -20 }}
@@ -39,16 +48,37 @@ const Navbar = () => {
 
           {/* Auth Buttons */}
           <div className="flex items-center gap-3">
-            <Link to="/login">
-              <Button variant="ghost" size="sm">
-                Log in
-              </Button>
-            </Link>
-            <Link to="/register">
-              <Button variant="default" size="sm">
-                Get Started
-              </Button>
-            </Link>
+            {isAuthenticated ? (
+              <>
+                <Link to="/app">
+                  <Button variant="default" size="sm">
+                    Documents
+                  </Button>
+                </Link>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  onClick={handleLogout}
+                  className="text-muted-foreground hover:text-foreground"
+                  aria-label="Log out"
+                >
+                  <LogOut className="w-4 h-4" />
+                </Button>
+              </>
+            ) : (
+              <>
+                <Link to="/login">
+                  <Button variant="ghost" size="sm">
+                    Log in
+                  </Button>
+                </Link>
+                <Link to="/register">
+                  <Button variant="default" size="sm">
+                    Get Started
+                  </Button>
+                </Link>
+              </>
+            )}
           </div>
         </nav>
       </div>

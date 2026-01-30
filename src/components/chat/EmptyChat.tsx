@@ -1,7 +1,16 @@
 import { motion } from 'framer-motion';
 import { MessageSquare } from 'lucide-react';
 
-const EmptyChat = () => {
+const SUGGESTIONS = [
+  'What are the main topics covered?',
+  'Summarize the key points',
+];
+
+interface EmptyChatProps {
+  onPromptClick?: (question: string) => void;
+}
+
+const EmptyChat = ({ onPromptClick }: EmptyChatProps) => {
   return (
     <motion.div
       initial={{ opacity: 0, scale: 0.95 }}
@@ -33,22 +42,21 @@ const EmptyChat = () => {
         {/* Suggestions */}
         <div className="space-y-2">
           <p className="text-sm text-muted-foreground mb-3">Try asking:</p>
-          <motion.div
-            initial={{ opacity: 0, y: 10 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.2 }}
-            className="inline-block px-4 py-2 rounded-lg bg-secondary text-sm cursor-pointer hover:bg-secondary/80 transition-colors"
-          >
-            "What are the main topics covered?"
-          </motion.div>
-          <motion.div
-            initial={{ opacity: 0, y: 10 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.3 }}
-            className="inline-block px-4 py-2 rounded-lg bg-secondary text-sm cursor-pointer hover:bg-secondary/80 transition-colors ml-2"
-          >
-            "Summarize the key points"
-          </motion.div>
+          <div className="flex flex-wrap gap-2 justify-center">
+            {SUGGESTIONS.map((question, i) => (
+              <motion.button
+                key={question}
+                type="button"
+                initial={{ opacity: 0, y: 10 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ delay: 0.2 + i * 0.1 }}
+                onClick={() => onPromptClick?.(question)}
+                className="px-4 py-2 rounded-lg bg-secondary text-sm text-left cursor-pointer hover:bg-secondary/80 transition-colors border-0 focus:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              >
+                &ldquo;{question}&rdquo;
+              </motion.button>
+            ))}
+          </div>
         </div>
       </div>
     </motion.div>

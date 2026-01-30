@@ -9,6 +9,7 @@ import ChatInput from '@/components/chat/ChatInput';
 import EmptyChat from '@/components/chat/EmptyChat';
 import TypingIndicator from '@/components/chat/TypingIndicator';
 import { useAppStore, Message } from '@/stores/useAppStore';
+import { usePreferencesStore } from '@/stores/usePreferencesStore';
 import { streamChat } from '@/lib/sseChat';
 import { getApiBaseUrl } from '@/lib/api';
 
@@ -31,7 +32,9 @@ const ChatPage = () => {
     setStreaming,
     setMessageSources,
     accessToken,
+    setAbortActiveSSE,
   } = useAppStore();
+  const autoScrollWhileStreaming = usePreferencesStore((s) => s.autoScrollWhileStreaming);
 
   const document = documents.find((doc) => doc.id === documentId);
   const conversation = documentId ? conversations[documentId] : null;
@@ -51,8 +54,10 @@ const ChatPage = () => {
 
   useEffect(() => {
     isMountedRef.current = true;
+    setAbortActiveSSE(() => () => streamAbortRef.current?.abort());
     return () => {
       isMountedRef.current = false;
+      setAbortActiveSSE(null);
       streamAbortRef.current?.abort();
       const docId = documentId ?? null;
       const conv = docId ? useAppStore.getState().conversations[docId] : null;
@@ -61,16 +66,33 @@ const ChatPage = () => {
         useAppStore.getState().setStreaming(docId, streamingMsg.id, false);
       }
     };
-  }, [documentId]);
+  }, [documentId, setAbortActiveSSE]);
 
   useEffect(() => {
-    if (!isStreaming) return;
+    if (!isStreaming || !autoScrollWhileStreaming) return;
     if (isNearBottom()) scrollToBottom();
-  }, [messages, isStreaming, isNearBottom, scrollToBottom]);
+  }, [messages, isStreaming, autoScrollWhileStreaming, isNearBottom, scrollToBottom]);
 
   const handleSendMessage = useCallback(
     async (content: string) => {
       if (!documentId) return;
+
+      const baseUrl = getApiBaseUrl();
+      if (!baseUrl) {
+        addMessage(documentId, {
+          id: `msg-${Date.now()}`,
+          role: 'user',
+          content,
+          timestamp: new Date(),
+        });
+        addMessage(documentId, {
+          id: `msg-${Date.now() + 1}`,
+          role: 'assistant',
+          content: 'Sorry, the app is not configured. Add VITE_API_URL to .env at the project root and restart the dev server.',
+          timestamp: new Date(),
+        });
+        return;
+      }
 
       streamAbortRef.current?.abort();
       streamAbortRef.current = new AbortController();
@@ -150,7 +172,7 @@ const ChatPage = () => {
         {
           signal,
           getToken: () => accessToken,
-          baseUrl: getApiBaseUrl(),
+          baseUrl,
         }
       );
 
@@ -213,7 +235,7 @@ const ChatPage = () => {
           className="flex-1 overflow-y-auto min-h-0"
         >
           {messages.length === 0 ? (
-            <EmptyChat />
+            <EmptyChat onPromptClick={handleSendMessage} />
           ) : (
             <div className="max-w-4xl mx-auto px-6 py-6 space-y-6">
               <AnimatePresence mode="popLayout">

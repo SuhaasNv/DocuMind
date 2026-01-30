@@ -25,7 +25,9 @@ const Dashboard = () => {
   // Load documents from backend so sidebar and chat use real document IDs.
   useEffect(() => {
     if (!accessToken) return;
-    const url = `${getApiBaseUrl()}/documents`;
+    const base = getApiBaseUrl();
+    if (!base) return;
+    const url = `${base}/documents`;
     fetch(url, { headers: { Authorization: `Bearer ${accessToken}` } })
       .then((res) => (res.ok ? res.json() : Promise.reject(new Error('Failed to load documents'))))
       .then((data: ApiDocument[]) => {

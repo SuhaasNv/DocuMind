@@ -23,7 +23,12 @@ export function useBackendHealth(): BackendHealthState {
 
   useEffect(() => {
     let cancelled = false;
-    const url = `${getApiBaseUrl()}/health`;
+    const base = getApiBaseUrl();
+    if (!base) {
+      setState({ checked: true, reachable: false, error: 'VITE_API_URL is not set in .env' });
+      return;
+    }
+    const url = `${base}/health`;
 
     fetch(url, { method: 'GET' })
       .then((res) => {

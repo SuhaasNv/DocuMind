@@ -51,6 +51,10 @@ interface AppState {
   isSidebarOpen: boolean;
   isUploading: boolean;
 
+  // SSE abort (not persisted): call to abort active chat stream on logout
+  abortActiveSSE: (() => void) | null;
+  setAbortActiveSSE: (fn: (() => void) | null) => void;
+
   // Actions
   setAuthenticated: (auth: boolean, user?: { id: string; email: string; name: string } | null, accessToken?: string | null) => void;
   setDocuments: (documents: Document[]) => void;
@@ -82,6 +86,8 @@ export const useAppStore = create<AppState>()(
       currentConversationId: null,
       isSidebarOpen: true,
       isUploading: false,
+      abortActiveSSE: null,
+      setAbortActiveSSE: (fn) => set({ abortActiveSSE: fn }),
 
       // Actions
       setAuthenticated: (auth, user = null, accessToken: string | null = null) =>
@@ -211,6 +217,7 @@ export const useAppStore = create<AppState>()(
         isAuthenticated: state.isAuthenticated,
         user: state.user,
         accessToken: state.accessToken,
+        // do not persist abortActiveSSE
       }),
     },
   ),

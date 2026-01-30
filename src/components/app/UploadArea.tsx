@@ -61,9 +61,11 @@ const UploadArea = () => {
     const token = useAppStore.getState().accessToken;
     if (!token) return;
 
+    const base = getApiBaseUrl();
+    if (!base) return;
     const poll = async () => {
       try {
-        const res = await fetch(`${getApiBaseUrl()}/documents/${docId}`, {
+        const res = await fetch(`${base}/documents/${docId}`, {
           headers: { Authorization: `Bearer ${token}` },
         });
         if (!res.ok) return;
@@ -98,6 +100,11 @@ const UploadArea = () => {
         setUploadError('Please log in to upload documents');
         return;
       }
+      const base = getApiBaseUrl();
+      if (!base) {
+        setUploadError('VITE_API_URL is not set in .env');
+        return;
+      }
 
       setUploadError(null);
       setUploading(true);
@@ -106,7 +113,7 @@ const UploadArea = () => {
         try {
           const formData = new FormData();
           formData.append('file', file);
-          const res = await fetch(`${getApiBaseUrl()}/documents/upload`, {
+          const res = await fetch(`${base}/documents/upload`, {
             method: 'POST',
             headers: { Authorization: `Bearer ${accessToken}` },
             body: formData,

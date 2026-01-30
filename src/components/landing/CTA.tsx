@@ -2,8 +2,11 @@ import { motion } from 'framer-motion';
 import { ArrowRight } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
+import { useAppStore } from '@/stores/useAppStore';
 
 const CTA = () => {
+  const isAuthenticated = useAppStore((s) => s.isAuthenticated);
+
   return (
     <section className="py-24 relative overflow-hidden">
       {/* Background glow */}
@@ -26,7 +29,7 @@ const CTA = () => {
           <p className="text-xl text-muted-foreground mb-10">
             Join thousands of professionals who use AI to extract insights from their documents in seconds.
           </p>
-          <Link to="/register">
+          <Link to={isAuthenticated ? '/app' : '/register'}>
             <Button variant="hero" size="xl" className="animate-pulse-glow">
               Start for Free
               <ArrowRight className="w-5 h-5" />

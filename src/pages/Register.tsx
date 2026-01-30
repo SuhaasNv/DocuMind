@@ -7,6 +7,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { useAppStore } from '@/stores/useAppStore';
 import { getApiBaseUrl, getApiErrorMessage } from '@/lib/api';
+import Navbar from '@/components/landing/Navbar';
 
 interface AuthResponse {
   user: { id: string; email: string; name: string };
@@ -35,8 +36,15 @@ const Register = () => {
     }
     setIsLoading(true);
 
+    const base = getApiBaseUrl();
+    if (!base) {
+      setError('VITE_API_URL is not set in .env. Add it at the project root and restart the dev server.');
+      setIsLoading(false);
+      return;
+    }
+
     try {
-      const res = await fetch(`${getApiBaseUrl()}/auth/register`, {
+      const res = await fetch(`${base}/auth/register`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ name: name.trim(), email: email.trim(), password }),
@@ -68,11 +76,14 @@ const Register = () => {
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-background relative overflow-hidden">
-      {/* Background effects */}
-      <div className="absolute inset-0 hero-gradient opacity-50" />
-      <motion.div
-        className="absolute bottom-1/3 right-1/4 w-72 h-72 bg-accent/10 rounded-full blur-3xl"
+    <div className="min-h-screen bg-background">
+      <div className="noise-overlay" />
+      <Navbar />
+      <div className="pt-28 min-h-screen flex items-center justify-center relative overflow-hidden">
+        {/* Background effects */}
+        <div className="absolute inset-0 hero-gradient opacity-50" />
+        <motion.div
+          className="absolute bottom-1/3 right-1/4 w-72 h-72 bg-accent/10 rounded-full blur-3xl"
         animate={{
           scale: [1, 1.2, 1],
           opacity: [0.3, 0.5, 0.3],
@@ -228,6 +239,7 @@ const Register = () => {
           </p>
         </div>
       </motion.div>
+      </div>
     </div>
   );
 };

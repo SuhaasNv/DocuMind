@@ -45,8 +45,8 @@ const ChatInput = ({ onSend, isLoading = false, disabled = false }: ChatInputPro
       className="border-t border-border bg-background/80 backdrop-blur-lg p-4"
     >
       <form onSubmit={handleSubmit} className="max-w-4xl mx-auto">
-        <div className="relative flex items-end gap-3">
-          <div className="flex-1 relative">
+        <div className="relative flex items-center gap-3">
+          <div className="flex-1 relative flex items-center min-h-12">
             <textarea
               ref={textareaRef}
               value={message}
@@ -56,13 +56,13 @@ const ChatInput = ({ onSend, isLoading = false, disabled = false }: ChatInputPro
               disabled={disabled || isLoading}
               rows={1}
               className={cn(
-                'w-full resize-none rounded-xl border border-border bg-secondary/50 px-4 py-3 pr-12',
+                'w-full resize-none rounded-xl border border-border bg-secondary/50 px-4 py-3 min-h-12',
                 'text-foreground placeholder:text-muted-foreground',
                 'focus:outline-none focus:ring-2 focus:ring-ring focus:border-transparent',
                 'disabled:opacity-50 disabled:cursor-not-allowed',
                 'transition-all duration-200'
               )}
-              style={{ minHeight: '48px', maxHeight: '120px' }}
+              style={{ maxHeight: '120px' }}
             />
           </div>
 
@@ -70,7 +70,7 @@ const ChatInput = ({ onSend, isLoading = false, disabled = false }: ChatInputPro
             type="submit"
             size="icon"
             disabled={!message.trim() || isLoading || disabled}
-            className="h-12 w-12 rounded-xl flex-shrink-0"
+            className="h-12 w-12 rounded-xl flex-shrink-0 self-center"
           >
             {isLoading ? (
               <Loader2 className="w-5 h-5 animate-spin" />

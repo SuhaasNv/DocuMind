@@ -1,6 +1,7 @@
 import { memo } from 'react';
 import { cn } from '@/lib/utils';
 import { Message } from '@/stores/useAppStore';
+import { usePreferencesStore } from '@/stores/usePreferencesStore';
 import { Bot, User } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import { motion } from 'framer-motion';
@@ -11,12 +12,22 @@ interface MessageBubbleProps {
 
 const MessageBubble = memo(function MessageBubble({ message }: MessageBubbleProps) {
   const isUser = message.role === 'user';
+  const showSourcesUnderAnswers = usePreferencesStore((s) => s.showSourcesUnderAnswers);
+  const enableAnimations = usePreferencesStore((s) => s.enableAnimations);
+
+  const showSources = !isUser && showSourcesUnderAnswers && message.sources && message.sources.length > 0;
+  const chunkIndices = showSources
+    ? message.sources!.map((s) => s.chunkIndex).sort((a, b) => a - b)
+    : [];
+
+  const Wrapper = enableAnimations ? motion.div : 'div';
+  const wrapperProps = enableAnimations
+    ? { initial: { opacity: 0, y: 10 }, animate: { opacity: 1, y: 0 }, transition: { duration: 0.3 } }
+    : {};
 
   return (
-    <motion.div
-      initial={{ opacity: 0, y: 10 }}
-      animate={{ opacity: 1, y: 0 }}
-      transition={{ duration: 0.3 }}
+    <Wrapper
+      {...wrapperProps}
       className={cn('flex gap-3', isUser && 'flex-row-reverse')}
     >
       {/* Avatar */}
@@ -86,8 +97,13 @@ const MessageBubble = memo(function MessageBubble({ message }: MessageBubbleProp
             </ReactMarkdown>
           )}
         </div>
+        {showSources && (
+          <p className="mt-3 pt-3 border-t border-border/50 text-muted-foreground text-xs">
+            Sources (chunk indices): {chunkIndices.join(', ')}
+          </p>
+        )}
       </div>
-    </motion.div>
+    </Wrapper>
   );
 });
 

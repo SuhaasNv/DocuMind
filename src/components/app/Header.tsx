@@ -1,6 +1,13 @@
-import { Menu, Bell, Search } from 'lucide-react';
+import { Menu, Bell, Search, Settings, LogOut } from 'lucide-react';
+import { Link } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
 import { useAppStore } from '@/stores/useAppStore';
 
 interface HeaderProps {
@@ -8,7 +15,12 @@ interface HeaderProps {
 }
 
 const Header = ({ title = 'Documents' }: HeaderProps) => {
-  const { toggleSidebar, user } = useAppStore();
+  const { toggleSidebar, user, setAuthenticated, abortActiveSSE } = useAppStore();
+
+  const handleLogout = () => {
+    abortActiveSSE?.();
+    setAuthenticated(false, null, null);
+  };
 
   return (
     <header className="h-16 border-b border-border bg-background/80 backdrop-blur-lg flex items-center justify-between px-6 sticky top-0 z-40">
@@ -42,10 +54,36 @@ const Header = ({ title = 'Documents' }: HeaderProps) => {
           <Bell className="w-5 h-5" />
         </Button>
 
-        {/* User avatar */}
-        <div className="w-9 h-9 rounded-full bg-primary/20 flex items-center justify-center text-sm font-medium text-primary">
-          {user?.name?.charAt(0).toUpperCase() || 'U'}
-        </div>
+        {/* User avatar dropdown */}
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button
+              variant="ghost"
+              size="icon"
+              className="rounded-full w-9 h-9 p-0"
+              aria-label="Account menu"
+            >
+              <div className="w-9 h-9 rounded-full bg-primary/20 flex items-center justify-center text-sm font-medium text-primary">
+                {user?.name?.charAt(0).toUpperCase() || 'U'}
+              </div>
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end" className="w-48">
+            <DropdownMenuItem asChild>
+              <Link to="/app/settings" className="flex items-center gap-2 cursor-pointer">
+                <Settings className="w-4 h-4" />
+                Settings
+              </Link>
+            </DropdownMenuItem>
+            <DropdownMenuItem
+              onClick={handleLogout}
+              className="flex items-center gap-2 cursor-pointer text-destructive focus:text-destructive"
+            >
+              <LogOut className="w-4 h-4" />
+              Log out
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
       </div>
     </header>
   );

@@ -2,9 +2,11 @@ import { motion } from 'framer-motion';
 import { ArrowRight, Sparkles } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
+import { useAppStore } from '@/stores/useAppStore';
 import heroBackground from '@/assets/hero-background.jpg';
 
 const Hero = () => {
+  const isAuthenticated = useAppStore((s) => s.isAuthenticated);
   return (
     <section className="relative min-h-screen flex items-center justify-center overflow-hidden">
       {/* Background image */}
@@ -89,9 +91,9 @@ const Hero = () => {
           transition={{ duration: 0.6, delay: 0.3 }}
           className="flex flex-col sm:flex-row gap-4 justify-center items-center"
         >
-          <Link to="/register">
+          <Link to={isAuthenticated ? '/app' : '/register'}>
             <Button variant="hero" size="xl">
-              Get Started
+              {isAuthenticated ? 'Documents' : 'Get Started'}
               <ArrowRight className="w-5 h-5" />
             </Button>
           </Link>

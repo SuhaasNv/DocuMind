@@ -47,9 +47,10 @@ const DocumentCard = ({ document }: DocumentCardProps) => {
   const handleDelete = async (e: React.MouseEvent) => {
     e.preventDefault();
     e.stopPropagation();
-    if (accessToken) {
+    const base = getApiBaseUrl();
+    if (accessToken && base) {
       try {
-        await fetch(`${getApiBaseUrl()}/documents/${document.id}`, {
+        await fetch(`${base}/documents/${document.id}`, {
           method: 'DELETE',
           headers: { Authorization: `Bearer ${accessToken}` },
         });

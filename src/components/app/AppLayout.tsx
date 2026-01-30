@@ -3,6 +3,7 @@ import { Outlet } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import Sidebar from '@/components/app/Sidebar';
 import { useAppStore } from '@/stores/useAppStore';
+import { usePreferencesStore } from '@/stores/usePreferencesStore';
 
 /**
  * Prevents any authenticated API call (SSE, chat, documents) from running before
@@ -13,6 +14,7 @@ import { useAppStore } from '@/stores/useAppStore';
 const AppLayout = () => {
   const [hydrated, setHydrated] = useState(false);
   const persist = useAppStore.persist;
+  const enableAnimations = usePreferencesStore((s) => s.enableAnimations);
 
   useEffect(() => {
     if (persist.hasHydrated()) {
@@ -20,16 +22,32 @@ const AppLayout = () => {
       return;
     }
     const unsub = persist.onFinishHydration(() => setHydrated(true));
-    return unsub;
+    // Fallback: if hydration doesn't complete (e.g. corrupt storage), show app after 3s
+    const timeout = setTimeout(() => {
+      setHydrated(true);
+    }, 3000);
+    return () => {
+      unsub();
+      clearTimeout(timeout);
+    };
   }, [persist]);
 
   if (!hydrated) {
     return (
-      <div className="flex h-screen items-center justify-center bg-background">
-        <div className="text-muted-foreground text-sm">Loading...</div>
+      <div className="flex h-screen flex-col items-center justify-center gap-4 bg-background">
+        <div
+          className="h-8 w-8 animate-spin rounded-full border-2 border-primary border-t-transparent"
+          aria-hidden
+        />
+        <p className="text-foreground text-sm font-medium">Loading...</p>
       </div>
     );
   }
+
+  const MainContent = enableAnimations ? motion.div : 'div';
+  const mainContentProps = enableAnimations
+    ? { initial: { opacity: 0 }, animate: { opacity: 1 }, transition: { duration: 0.3 } }
+    : {};
 
   return (
     <div className="flex h-screen overflow-hidden bg-background">
@@ -40,14 +58,12 @@ const AppLayout = () => {
       <Sidebar />
 
       {/* Main content */}
-      <motion.div
-        initial={{ opacity: 0 }}
-        animate={{ opacity: 1 }}
-        transition={{ duration: 0.3 }}
+      <MainContent
+        {...mainContentProps}
         className="flex-1 flex flex-col overflow-hidden"
       >
         <Outlet />
-      </motion.div>
+      </MainContent>
     </div>
   );
 };

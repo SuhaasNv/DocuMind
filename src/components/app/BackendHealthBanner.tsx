@@ -18,7 +18,7 @@ export default function BackendHealthBanner() {
     >
       <AlertCircle className="w-4 h-4 shrink-0" />
       <span>
-        Backend unreachable at {getApiBaseUrl()}. {error ?? 'Unknown error'}
+        Backend unreachable{getApiBaseUrl() ? ` at ${getApiBaseUrl()}` : ''}. {error ?? 'Unknown error'}
       </span>
     </div>
   );

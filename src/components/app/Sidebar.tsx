@@ -1,7 +1,8 @@
 import { motion, AnimatePresence } from 'framer-motion';
-import { Link, useLocation, useNavigate } from 'react-router-dom';
+import { Link, useLocation } from 'react-router-dom';
 import {
   FileText,
+  Home,
   LayoutDashboard,
   Settings,
   LogOut,
@@ -15,15 +16,15 @@ import { useAppStore } from '@/stores/useAppStore';
 
 const Sidebar = () => {
   const location = useLocation();
-  const navigate = useNavigate();
-  const { isSidebarOpen, toggleSidebar, setAuthenticated, documents } = useAppStore();
+  const { isSidebarOpen, toggleSidebar, setAuthenticated, abortActiveSSE, documents } = useAppStore();
 
   const handleLogout = () => {
-    setAuthenticated(false, null);
-    navigate('/');
+    abortActiveSSE?.();
+    setAuthenticated(false, null, null);
   };
 
   const navItems = [
+    { icon: Home, label: 'Home', path: '/' },
     { icon: LayoutDashboard, label: 'Documents', path: '/app' },
     { icon: Settings, label: 'Settings', path: '/app/settings' },
   ];
@@ -45,7 +46,7 @@ const Sidebar = () => {
               exit={{ opacity: 0, x: -10 }}
               transition={{ duration: 0.15 }}
             >
-              <Link to="/app" className="flex items-center gap-2">
+              <Link to="/" className="flex items-center gap-2">
                 <div className="w-8 h-8 rounded-lg bg-primary/20 flex items-center justify-center">
                   <FileText className="w-4 h-4 text-primary" />
                 </div>

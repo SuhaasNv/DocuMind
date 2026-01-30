@@ -12,6 +12,7 @@ import DocsPage from "./pages/DocsPage";
 import AboutPage from "./pages/AboutPage";
 import Dashboard from "./pages/Dashboard";
 import ChatPage from "./pages/ChatPage";
+import SettingsPage from "./pages/SettingsPage";
 import NotFound from "./pages/NotFound";
 import AppLayout from "./components/app/AppLayout";
 import BackendHealthBanner from "./components/app/BackendHealthBanner";
@@ -25,7 +26,12 @@ const App = () => (
       <Sonner />
       {/* Verify backend connectivity on boot; show actual error if unreachable. */}
       <BackendHealthBanner />
-      <BrowserRouter>
+      <BrowserRouter
+        future={{
+          v7_startTransition: true,
+          v7_relativeSplatPath: true,
+        }}
+      >
         <Routes>
           {/* Public routes */}
           <Route path="/" element={<Index />} />
@@ -39,6 +45,7 @@ const App = () => (
           {/* App routes (with sidebar layout) */}
           <Route path="/app" element={<AppLayout />}>
             <Route index element={<Dashboard />} />
+            <Route path="settings" element={<SettingsPage />} />
           </Route>
           <Route path="/chat/:documentId" element={<AppLayout />}>
             <Route index element={<ChatPage />} />
