@@ -15,7 +15,7 @@ interface HeaderProps {
 }
 
 const Header = ({ title = 'Documents' }: HeaderProps) => {
-  const { toggleSidebar, user, setAuthenticated, abortActiveSSE } = useAppStore();
+  const { toggleSidebar, user, setAuthenticated, abortActiveSSE, documentSearchQuery, setDocumentSearchQuery } = useAppStore();
 
   const handleLogout = () => {
     abortActiveSSE?.();
@@ -41,11 +41,14 @@ const Header = ({ title = 'Documents' }: HeaderProps) => {
       <div className="flex items-center gap-4">
         {/* Search */}
         <div className="hidden md:flex relative">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground pointer-events-none" />
           <Input
-            type="text"
+            type="search"
             placeholder="Search documents..."
+            value={documentSearchQuery}
+            onChange={(e) => setDocumentSearchQuery(e.target.value)}
             className="w-64 pl-10 bg-secondary/50 border-border/50 focus:border-primary/50"
+            aria-label="Search documents by name"
           />
         </div>
 

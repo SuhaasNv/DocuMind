@@ -50,6 +50,8 @@ interface AppState {
   // UI state
   isSidebarOpen: boolean;
   isUploading: boolean;
+  documentSearchQuery: string;
+  setDocumentSearchQuery: (query: string) => void;
 
   // SSE abort (not persisted): call to abort active chat stream on logout
   abortActiveSSE: (() => void) | null;
@@ -86,6 +88,8 @@ export const useAppStore = create<AppState>()(
       currentConversationId: null,
       isSidebarOpen: true,
       isUploading: false,
+      documentSearchQuery: '',
+      setDocumentSearchQuery: (query) => set({ documentSearchQuery: query }),
       abortActiveSSE: null,
       setAbortActiveSSE: (fn) => set({ abortActiveSSE: fn }),
 

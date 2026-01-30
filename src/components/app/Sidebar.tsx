@@ -16,7 +16,13 @@ import { useAppStore } from '@/stores/useAppStore';
 
 const Sidebar = () => {
   const location = useLocation();
-  const { isSidebarOpen, toggleSidebar, setAuthenticated, abortActiveSSE, documents } = useAppStore();
+  const { isSidebarOpen, toggleSidebar, setAuthenticated, abortActiveSSE, documents, documentSearchQuery } = useAppStore();
+
+  const recentDocuments = documentSearchQuery.trim()
+    ? documents.filter((doc) =>
+        doc.name.toLowerCase().includes(documentSearchQuery.trim().toLowerCase())
+      ).slice(0, 5)
+    : documents.slice(0, 5);
 
   const handleLogout = () => {
     abortActiveSSE?.();
@@ -121,13 +127,13 @@ const Sidebar = () => {
         </ul>
 
         {/* Recent Documents */}
-        {isSidebarOpen && documents.length > 0 && (
+        {isSidebarOpen && recentDocuments.length > 0 && (
           <div className="mt-6">
             <h3 className="px-3 mb-2 text-xs font-medium text-muted-foreground uppercase tracking-wider">
               Recent Documents
             </h3>
             <ul className="space-y-1">
-              {documents.slice(0, 5).map((doc) => (
+              {recentDocuments.map((doc) => (
                 <li key={doc.id}>
                   <Link
                     to={`/chat/${doc.id}`}

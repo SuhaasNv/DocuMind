@@ -19,8 +19,15 @@ interface ApiDocument {
 
 const Dashboard = () => {
   const documents = useAppStore((state) => state.documents);
+  const documentSearchQuery = useAppStore((state) => state.documentSearchQuery);
   const setDocuments = useAppStore((state) => state.setDocuments);
   const accessToken = useAppStore((state) => state.accessToken);
+
+  const filteredDocuments = documentSearchQuery.trim()
+    ? documents.filter((doc) =>
+        doc.name.toLowerCase().includes(documentSearchQuery.trim().toLowerCase())
+      )
+    : documents;
 
   // Load documents from backend so sidebar and chat use real document IDs.
   useEffect(() => {
@@ -60,11 +67,12 @@ const Dashboard = () => {
             <div className="flex items-center justify-between mb-6">
               <h2 className="text-lg font-semibold">Your Documents</h2>
               <span className="text-sm text-muted-foreground">
-                {documents.length} {documents.length === 1 ? 'document' : 'documents'}
+                {filteredDocuments.length} {filteredDocuments.length === 1 ? 'document' : 'documents'}
+                {documentSearchQuery.trim() && ` (filtered from ${documents.length})`}
               </span>
             </div>
 
-            {documents.length === 0 ? (
+            {filteredDocuments.length === 0 ? (
               <motion.div
                 initial={{ opacity: 0, y: 20 }}
                 animate={{ opacity: 1, y: 0 }}
@@ -73,15 +81,19 @@ const Dashboard = () => {
                 <div className="w-20 h-20 rounded-2xl bg-muted/50 flex items-center justify-center mx-auto mb-6">
                   <FileText className="w-10 h-10 text-muted-foreground" />
                 </div>
-                <h3 className="text-lg font-medium mb-2">No documents yet</h3>
+                <h3 className="text-lg font-medium mb-2">
+                  {documentSearchQuery.trim() ? 'No documents match your search' : 'No documents yet'}
+                </h3>
                 <p className="text-muted-foreground">
-                  Upload a PDF to start chatting with your documents
+                  {documentSearchQuery.trim()
+                    ? 'Try a different search term or clear the search.'
+                    : 'Upload a PDF to start chatting with your documents'}
                 </p>
               </motion.div>
             ) : (
               <div className="space-y-4">
                 <AnimatePresence mode="popLayout">
-                  {documents.map((doc) => (
+                  {filteredDocuments.map((doc) => (
                     <DocumentCard key={doc.id} document={doc} />
                   ))}
                 </AnimatePresence>
