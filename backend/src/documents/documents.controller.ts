@@ -16,6 +16,7 @@ import {
   FileTypeValidator,
   BadRequestException,
 } from '@nestjs/common';
+import { Throttle } from '@nestjs/throttler';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { memoryStorage } from 'multer';
 import type { Request, Response } from 'express';
@@ -37,6 +38,11 @@ import { ChatRequestDto } from './dto/chat-request.dto.js';
 const PDF_MIME = 'application/pdf';
 const MAX_SIZE = 50 * 1024 * 1024; // 50MB
 
+/** Limit uploads to prevent storage/CPU abuse. */
+const UPLOAD_THROTTLE = { default: { limit: 15, ttl: 60000 } }; // 15 per minute
+/** Limit chat requests to prevent LLM/API abuse. */
+const CHAT_THROTTLE = { default: { limit: 30, ttl: 60000 } }; // 30 per minute
+
 @Controller('documents')
 @UseGuards(JwtAuthGuard)
 export class DocumentsController {
@@ -47,6 +53,7 @@ export class DocumentsController {
   ) {}
 
   @Post('upload')
+  @Throttle(UPLOAD_THROTTLE)
   @UseInterceptors(
     FileInterceptor('file', {
       storage: memoryStorage(),
@@ -100,6 +107,7 @@ export class DocumentsController {
   }
 
   @Post(':id/chat')
+  @Throttle(CHAT_THROTTLE)
   async chat(
     @Param('id') id: string,
     @Body() dto: ChatRequestDto,
@@ -124,6 +132,7 @@ export class DocumentsController {
    * Aborts Ollama request cleanly on client disconnect; does not throw.
    */
   @Post(':id/chat/stream')
+  @Throttle(CHAT_THROTTLE)
   async chatStream(
     @Param('id') id: string,
     @Body() dto: ChatRequestDto,

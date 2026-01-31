@@ -1,4 +1,4 @@
-import { useState, useCallback, useRef, useEffect } from 'react';
+import { useState, useCallback, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Upload, FileText, X, AlertCircle } from 'lucide-react';
 import { cn } from '@/lib/utils';
@@ -61,11 +61,9 @@ const UploadArea = () => {
     const token = useAppStore.getState().accessToken;
     if (!token) return;
 
-    const base = getApiBaseUrl();
-    if (!base) return;
     const poll = async () => {
       try {
-        const res = await fetch(`${base}/documents/${docId}`, {
+        const res = await fetch(`${getApiBaseUrl()}/documents/${docId}`, {
           headers: { Authorization: `Bearer ${token}` },
         });
         if (!res.ok) return;
@@ -89,27 +87,15 @@ const UploadArea = () => {
     pollRef.current[docId] = setInterval(poll, POLL_INTERVAL_MS);
   }, []);
 
-  useEffect(() => {
-    return () => {
-      Object.values(pollRef.current).forEach((id) => clearInterval(id));
-      pollRef.current = {};
-    };
-  }, []);
-
   const handleFiles = useCallback(
     async (files: File[]) => {
       const pdfFiles = files.filter((file) => file.type === 'application/pdf');
       if (pdfFiles.length === 0) {
-        setUploadError('Only PDF files are supported. Please select a PDF to upload.');
+        setUploadError('Please upload PDF files only');
         return;
       }
       if (!accessToken) {
-        setUploadError('Sign in to upload documents.');
-        return;
-      }
-      const base = getApiBaseUrl();
-      if (!base) {
-        setUploadError('Backend URL is not configured. Add VITE_API_URL to .env and restart the dev server.');
+        setUploadError('Please log in to upload documents');
         return;
       }
 
@@ -120,7 +106,7 @@ const UploadArea = () => {
         try {
           const formData = new FormData();
           formData.append('file', file);
-          const res = await fetch(`${base}/documents/upload`, {
+          const res = await fetch(`${getApiBaseUrl()}/documents/upload`, {
             method: 'POST',
             headers: { Authorization: `Bearer ${accessToken}` },
             body: formData,
@@ -137,7 +123,7 @@ const UploadArea = () => {
           addDocument(doc);
           pollDocumentStatus(doc.id);
         } catch (err) {
-          setUploadError(err instanceof Error ? err.message : 'Upload failed. Check your connection and try again.');
+          setUploadError(err instanceof Error ? err.message : 'Upload failed');
         }
       }
 
@@ -158,7 +144,7 @@ const UploadArea = () => {
           onDragLeave={handleDragLeave}
           onDrop={handleDrop}
           className={cn(
-            'relative border-2 border-dashed rounded-2xl p-6 sm:p-12 text-center transition-all duration-300',
+            'relative border-2 border-dashed rounded-2xl p-12 text-center transition-all duration-300',
             isDragOver
               ? 'border-primary bg-primary/5'
               : 'border-border/50 hover:border-primary/50 hover:bg-card/50',
@@ -173,10 +159,10 @@ const UploadArea = () => {
             <Upload className="w-8 h-8 text-primary" />
           </motion.div>
 
-          <h3 className="text-lg sm:text-xl font-semibold mb-2">
+          <h3 className="text-xl font-semibold mb-2">
             {isDragOver ? 'Drop your PDF here' : 'Upload a document'}
           </h3>
-          <p className="text-muted-foreground text-mobile-safe mb-6">
+          <p className="text-muted-foreground mb-6">
             Drag and drop your PDF file, or click to browse
           </p>
 
@@ -194,7 +180,7 @@ const UploadArea = () => {
             Choose PDF
           </Button>
 
-          <p className="mt-4 text-mobile-safe text-muted-foreground">
+          <p className="mt-4 text-xs text-muted-foreground">
             Supports PDF files up to 50MB
           </p>
         </div>

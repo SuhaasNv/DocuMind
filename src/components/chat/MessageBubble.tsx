@@ -44,14 +44,14 @@ const MessageBubble = memo(function MessageBubble({ message }: MessageBubbleProp
         )}
       </div>
 
-      {/* Message content - no fixed heights, wrap cleanly */}
+      {/* Message content */}
       <div
         className={cn(
-          'max-w-[85%] sm:max-w-[80%] rounded-2xl px-4 py-3 min-w-0',
+          'max-w-[80%] rounded-2xl px-4 py-3',
           isUser ? 'message-user' : 'message-ai'
         )}
       >
-        <div className="prose prose-invert prose-sm max-w-none text-mobile-safe [&>*]:break-words">
+        <div className="prose prose-invert prose-sm max-w-none">
           {message.isStreaming ? (
             /* While streaming: render text + cursor inline so cursor stays at end of text */
             <p className="mb-0 whitespace-pre-wrap break-words">
@@ -66,14 +66,14 @@ const MessageBubble = memo(function MessageBubble({ message }: MessageBubbleProp
                   const isInline = !match;
                   return isInline ? (
                     <code
-                      className="px-1.5 py-0.5 rounded bg-muted text-primary text-sm font-mono break-all"
+                      className="px-1.5 py-0.5 rounded bg-muted text-primary text-sm font-mono"
                       {...props}
                     >
                       {children}
                     </code>
                   ) : (
-                    <pre className="bg-muted/50 rounded-lg p-4 overflow-x-auto my-3 max-w-full text-sm sm:text-base font-mono">
-                      <code className="text-foreground break-words" {...props}>
+                    <pre className="bg-muted/50 rounded-lg p-4 overflow-x-auto my-3">
+                      <code className="text-sm font-mono text-foreground" {...props}>
                         {children}
                       </code>
                     </pre>
@@ -98,7 +98,7 @@ const MessageBubble = memo(function MessageBubble({ message }: MessageBubbleProp
           )}
         </div>
         {showSources && (
-          <p className="mt-3 pt-3 border-t border-border/50 text-muted-foreground text-mobile-safe text-sm">
+          <p className="mt-3 pt-3 border-t border-border/50 text-muted-foreground text-xs">
             Sources (chunk indices): {chunkIndices.join(', ')}
           </p>
         )}

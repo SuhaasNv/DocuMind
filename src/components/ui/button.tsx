@@ -29,11 +29,11 @@ const buttonVariants = cva(
           "bg-card/50 backdrop-blur-lg border border-border/50 text-foreground hover:bg-card/70 active:scale-[0.98]",
       },
       size: {
-        default: "h-10 px-4 py-2 min-h-touch md:min-h-0",
-        sm: "h-9 min-h-touch md:min-h-0 rounded-md px-3",
+        default: "h-10 px-4 py-2",
+        sm: "h-9 rounded-md px-3",
         lg: "h-12 rounded-lg px-6 text-base",
         xl: "h-14 rounded-xl px-8 text-lg",
-        icon: "h-10 w-10 min-h-touch min-w-touch md:min-h-0 md:min-w-0",
+        icon: "h-10 w-10",
       },
     },
     defaultVariants: {

@@ -2,7 +2,6 @@ import * as React from "react";
 
 /** Below 768px: sidebar as slide-in drawer (iPhone, iPad portrait). */
 export const MOBILE_BREAKPOINT = 768;
-
 /** 1024px and up: persistent sidebar (iPad landscape, MacBook, desktop). */
 export const DESKTOP_BREAKPOINT = 1024;
 

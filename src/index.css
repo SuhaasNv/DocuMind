@@ -9,12 +9,6 @@
 
 @layer base {
   :root {
-    /* Safe area insets for notch, Dynamic Island, home indicator */
-    --sat: env(safe-area-inset-top);
-    --sab: env(safe-area-inset-bottom);
-    --sal: env(safe-area-inset-left);
-    --sar: env(safe-area-inset-right);
-
     /* Dark mode only - premium dark theme */
     --background: 220 20% 4%;
     --foreground: 210 20% 95%;
@@ -87,31 +81,11 @@
 
   html {
     @apply scroll-smooth;
-    overflow-x: hidden;
   }
 
   body {
     @apply bg-background text-foreground font-sans antialiased;
-    font-family: -apple-system, BlinkMacSystemFont, 'Inter', system-ui, sans-serif;
-    font-size: clamp(0.875rem, 2vw + 0.75rem, 1.125rem);
-    line-height: 1.5;
-    overflow-x: hidden;
-  }
-
-  /* Cap line length for readability (65–75ch) */
-  .prose-readability {
-    max-width: 70ch;
-  }
-
-  /* Respect reduced motion */
-  @media (prefers-reduced-motion: reduce) {
-    *,
-    *::before,
-    *::after {
-      animation-duration: 0.01ms !important;
-      animation-iteration-count: 1 !important;
-      transition-duration: 0.01ms !important;
-    }
+    font-family: 'Inter', system-ui, -apple-system, sans-serif;
   }
 
   /* Custom scrollbar */
@@ -226,33 +200,6 @@
 }
 
 @layer utilities {
-  /* Safe area padding (notch, home indicator) */
-  .pb-safe {
-    padding-bottom: max(1rem, env(safe-area-inset-bottom));
-  }
-  .pt-safe {
-    padding-top: max(1rem, env(safe-area-inset-top));
-  }
-  .pl-safe {
-    padding-left: max(1rem, env(safe-area-inset-left));
-  }
-  .pr-safe {
-    padding-right: max(1rem, env(safe-area-inset-right));
-  }
-  .px-safe {
-    padding-left: max(1rem, env(safe-area-inset-left));
-    padding-right: max(1rem, env(safe-area-inset-right));
-  }
-  .py-safe {
-    padding-top: max(1rem, env(safe-area-inset-top));
-    padding-bottom: max(1rem, env(safe-area-inset-bottom));
-  }
-
-  /* Minimum font size on mobile (14px) */
-  .text-mobile-safe {
-    font-size: clamp(0.875rem, 2vw + 0.5rem, 1rem);
-  }
-
   /* Animation delays */
   .animation-delay-100 { animation-delay: 100ms; }
   .animation-delay-200 { animation-delay: 200ms; }
@@ -331,20 +278,4 @@
   .typing-dot:nth-child(1) { animation-delay: 0s; }
   .typing-dot:nth-child(2) { animation-delay: 0.15s; }
   .typing-dot:nth-child(3) { animation-delay: 0.3s; }
-
-  /* Horizontal marquee – slow infinite scroll */
-  @keyframes marquee-horizontal {
-    0% { transform: translateX(0); }
-    100% { transform: translateX(-50%); }
-  }
-
-  .animate-marquee-horizontal {
-    animation: marquee-horizontal 45s linear infinite;
-  }
-
-  @media (prefers-reduced-motion: reduce) {
-    .animate-marquee-horizontal {
-      animation: none;
-    }
-  }
 }

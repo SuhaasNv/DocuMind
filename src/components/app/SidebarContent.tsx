@@ -45,7 +45,7 @@ const SidebarContent = ({ isExpanded, onLinkClick, isMobileSheet = false, showLo
   ];
 
   const linkClass = cn(
-    'flex items-center gap-3 rounded-lg transition-colors min-h-touch min-w-touch md:min-h-0 md:min-w-0',
+    'flex items-center gap-3 rounded-lg transition-colors min-h-touch md:min-h-0 min-w-0',
     isMobileSheet ? 'px-4 py-3 text-base' : 'px-3 py-2.5'
   );
 
