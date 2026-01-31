@@ -1,59 +1,47 @@
 import { motion, AnimatePresence } from 'framer-motion';
-import { Link, useLocation } from 'react-router-dom';
-import {
-  FileText,
-  Home,
-  LayoutDashboard,
-  Settings,
-  LogOut,
-  ChevronLeft,
-  ChevronRight,
-  Plus,
-} from 'lucide-react';
-import { cn } from '@/lib/utils';
+import { Link } from 'react-router-dom';
+import { ChevronLeft, ChevronRight, FileText } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useAppStore } from '@/stores/useAppStore';
+import { useIsMobile, useIsDesktop } from '@/hooks/use-mobile';
+import SidebarContent from './SidebarContent';
 
+/**
+ * App sidebar: on mobile (< 768px) this component renders nothing (sidebar is in Sheet in AppLayout).
+ * On tablet/desktop it renders an aside that is collapsible on tablet (768–1023) and persistent on desktop (1024+).
+ */
 const Sidebar = () => {
-  const location = useLocation();
-  const { isSidebarOpen, toggleSidebar, setAuthenticated, abortActiveSSE, documents, documentSearchQuery } = useAppStore();
+  const isMobile = useIsMobile();
+  const isDesktop = useIsDesktop();
+  const { isSidebarOpen, toggleSidebar } = useAppStore();
 
-  const recentDocuments = documentSearchQuery.trim()
-    ? documents.filter((doc) =>
-        doc.name.toLowerCase().includes(documentSearchQuery.trim().toLowerCase())
-      ).slice(0, 5)
-    : documents.slice(0, 5);
+  if (isMobile) {
+    return null;
+  }
 
-  const handleLogout = () => {
-    abortActiveSSE?.();
-    setAuthenticated(false, null, null);
-  };
-
-  const navItems = [
-    { icon: Home, label: 'Home', path: '/' },
-    { icon: LayoutDashboard, label: 'Documents', path: '/app' },
-    { icon: Settings, label: 'Settings', path: '/app/settings' },
-  ];
+  const isExpanded = isDesktop || isSidebarOpen;
+  const width = isDesktop ? 280 : isSidebarOpen ? 280 : 72;
 
   return (
     <motion.aside
       initial={false}
-      animate={{ width: isSidebarOpen ? 280 : 72 }}
+      animate={{ width }}
       transition={{ duration: 0.2, ease: 'easeInOut' }}
-      className="h-screen bg-sidebar border-r border-sidebar-border flex flex-col"
+      className="h-screen bg-sidebar border-r border-sidebar-border flex flex-col shrink-0"
     >
-      {/* Header */}
-      <div className="h-16 flex items-center justify-between px-4 border-b border-sidebar-border">
+      {/* Header: logo (when expanded) + collapse toggle */}
+      <div className="h-16 flex items-center justify-between px-4 border-b border-sidebar-border shrink-0">
         <AnimatePresence mode="wait">
-          {isSidebarOpen && (
+          {isExpanded && (
             <motion.div
               initial={{ opacity: 0, x: -10 }}
               animate={{ opacity: 1, x: 0 }}
               exit={{ opacity: 0, x: -10 }}
               transition={{ duration: 0.15 }}
+              className="flex items-center gap-2"
             >
               <Link to="/" className="flex items-center gap-2">
-                <div className="w-8 h-8 rounded-lg bg-primary/20 flex items-center justify-center">
+                <div className="w-8 h-8 rounded-lg bg-primary/20 flex items-center justify-center shrink-0">
                   <FileText className="w-4 h-4 text-primary" />
                 </div>
                 <span className="font-semibold text-foreground">DocuMind</span>
@@ -61,107 +49,25 @@ const Sidebar = () => {
             </motion.div>
           )}
         </AnimatePresence>
-
-        <Button
-          variant="ghost"
-          size="icon"
-          onClick={toggleSidebar}
-          className="text-muted-foreground hover:text-foreground"
-        >
-          {isSidebarOpen ? (
-            <ChevronLeft className="w-4 h-4" />
-          ) : (
-            <ChevronRight className="w-4 h-4" />
-          )}
-        </Button>
-      </div>
-
-      {/* Upload Button */}
-      <div className="p-3">
-        <Link to="/app">
+        {!isDesktop && (
           <Button
-            variant="default"
-            className={cn(
-              'w-full justify-start gap-3',
-              !isSidebarOpen && 'justify-center px-0'
-            )}
+            variant="ghost"
+            size="icon"
+            onClick={toggleSidebar}
+            className="min-h-touch min-w-touch md:min-h-0 md:min-w-0 text-muted-foreground hover:text-foreground"
+            aria-label={isSidebarOpen ? 'Collapse sidebar' : 'Expand sidebar'}
           >
-            <Plus className="w-4 h-4" />
-            {isSidebarOpen && 'Upload Document'}
+            {isSidebarOpen ? (
+              <ChevronLeft className="w-4 h-4" />
+            ) : (
+              <ChevronRight className="w-4 h-4" />
+            )}
           </Button>
-        </Link>
+        )}
       </div>
 
-      {/* Navigation */}
-      <nav className="flex-1 overflow-y-auto py-2 px-3">
-        <ul className="space-y-1">
-          {navItems.map((item) => {
-            const isActive = location.pathname === item.path;
-            return (
-              <li key={item.path}>
-                <Link
-                  to={item.path}
-                  className={cn(
-                    'flex items-center gap-3 px-3 py-2.5 rounded-lg transition-colors',
-                    isActive
-                      ? 'bg-sidebar-accent text-sidebar-accent-foreground'
-                      : 'text-sidebar-foreground hover:bg-sidebar-accent/50 hover:text-sidebar-accent-foreground',
-                    !isSidebarOpen && 'justify-center px-0'
-                  )}
-                >
-                  <item.icon className="w-5 h-5 flex-shrink-0" />
-                  {isSidebarOpen && (
-                    <motion.span
-                      initial={{ opacity: 0 }}
-                      animate={{ opacity: 1 }}
-                      exit={{ opacity: 0 }}
-                      className="text-sm font-medium"
-                    >
-                      {item.label}
-                    </motion.span>
-                  )}
-                </Link>
-              </li>
-            );
-          })}
-        </ul>
-
-        {/* Recent Documents */}
-        {isSidebarOpen && recentDocuments.length > 0 && (
-          <div className="mt-6">
-            <h3 className="px-3 mb-2 text-xs font-medium text-muted-foreground uppercase tracking-wider">
-              Recent Documents
-            </h3>
-            <ul className="space-y-1">
-              {recentDocuments.map((doc) => (
-                <li key={doc.id}>
-                  <Link
-                    to={`/chat/${doc.id}`}
-                    className="flex items-center gap-3 px-3 py-2 rounded-lg text-sidebar-foreground hover:bg-sidebar-accent/50 hover:text-sidebar-accent-foreground transition-colors"
-                  >
-                    <FileText className="w-4 h-4 flex-shrink-0" />
-                    <span className="text-sm truncate">{doc.name}</span>
-                  </Link>
-                </li>
-              ))}
-            </ul>
-          </div>
-        )}
-      </nav>
-
-      {/* Footer */}
-      <div className="p-3 border-t border-sidebar-border">
-        <Button
-          variant="ghost"
-          onClick={handleLogout}
-          className={cn(
-            'w-full justify-start gap-3 text-muted-foreground hover:text-foreground',
-            !isSidebarOpen && 'justify-center px-0'
-          )}
-        >
-          <LogOut className="w-4 h-4" />
-          {isSidebarOpen && 'Log out'}
-        </Button>
+      <div className="flex-1 flex flex-col min-h-0 overflow-hidden">
+        <SidebarContent isExpanded={isExpanded} isMobileSheet={false} showLogo={false} />
       </div>
     </motion.aside>
   );

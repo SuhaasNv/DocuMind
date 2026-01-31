@@ -36,8 +36,8 @@ const EmptyChat = ({ onPromptClick }: EmptyChatProps) => {
           <MessageSquare className="w-10 h-10 text-primary" />
         </motion.div>
 
-        <h2 className="text-2xl font-semibold mb-3">Start a conversation</h2>
-        <p className="text-muted-foreground mb-6">
+        <h2 className="text-xl sm:text-2xl font-semibold mb-3">Start a conversation</h2>
+        <p className="text-muted-foreground text-mobile-safe mb-6">
           Ask anything about your document. Answers are grounded in the content you uploaded—no guessing.
         </p>
 
@@ -53,7 +53,7 @@ const EmptyChat = ({ onPromptClick }: EmptyChatProps) => {
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ delay: 0.2 + i * 0.1 }}
                 onClick={() => onPromptClick?.(question)}
-                className="px-4 py-2 rounded-lg bg-secondary text-sm text-left cursor-pointer hover:bg-secondary/80 transition-colors border-0 focus:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                className="min-h-touch px-4 py-3 rounded-lg bg-secondary text-mobile-safe text-left cursor-pointer hover:bg-secondary/80 active:bg-secondary/90 transition-colors border-0 focus:outline-none focus-visible:ring-2 focus-visible:ring-ring touch-manipulation"
               >
                 &ldquo;{question}&rdquo;
               </motion.button>

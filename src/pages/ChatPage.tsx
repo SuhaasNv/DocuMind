@@ -204,12 +204,12 @@ const ChatPage = () => {
     return (
       <>
         <Header title="Chat" />
-        <div className="flex-1 flex items-center justify-center">
-          <div className="text-center">
+        <div className="flex-1 flex items-center justify-center px-4 py-safe">
+          <div className="text-center max-w-md">
             <FileText className="w-16 h-16 text-muted-foreground mx-auto mb-4" />
-            <h2 className="text-xl font-semibold mb-2">Document not found</h2>
-            <p className="text-muted-foreground mb-4">This document isn't in your library. It may have been deleted or the link is outdated.</p>
-            <Button onClick={() => navigate('/app')}>
+            <h2 className="text-lg sm:text-xl font-semibold mb-2">Document not found</h2>
+            <p className="text-muted-foreground text-mobile-safe mb-4">This document isn't in your library. It may have been deleted or the link is outdated.</p>
+            <Button onClick={() => navigate('/app')} className="min-h-touch">
               <ArrowLeft className="w-4 h-4 mr-2" />
               Back to Documents
             </Button>
@@ -221,22 +221,23 @@ const ChatPage = () => {
 
   return (
     <>
-      <header className="h-16 border-b border-border bg-background/80 backdrop-blur-lg flex items-center px-6 sticky top-0 z-40 shrink-0">
+      <header className="h-16 min-h-touch border-b border-border bg-background/80 backdrop-blur-lg flex items-center px-4 sm:px-6 pl-safe pr-safe sticky top-0 z-40 shrink-0">
         <Button
           variant="ghost"
           size="icon"
           onClick={() => navigate('/app')}
-          className="mr-4"
+          className="mr-2 sm:mr-4 min-h-touch min-w-touch md:min-h-0 md:min-w-0 shrink-0"
+          aria-label="Back to documents"
         >
           <ArrowLeft className="w-5 h-5" />
         </Button>
-        <div className="flex items-center gap-3">
-          <div className="w-8 h-8 rounded-lg bg-primary/20 flex items-center justify-center">
+        <div className="flex items-center gap-3 min-w-0 flex-1">
+          <div className="w-8 h-8 rounded-lg bg-primary/20 flex items-center justify-center shrink-0">
             <FileText className="w-4 h-4 text-primary" />
           </div>
-          <div>
-            <h1 className="font-medium truncate max-w-[300px]">{document.name}</h1>
-            <p className="text-xs text-muted-foreground">Chat with your document</p>
+          <div className="min-w-0 flex-1">
+            <h1 className="font-medium truncate text-sm sm:text-base max-w-[200px] xs:max-w-[260px] phone:max-w-[300px] sm:max-w-none">{document.name}</h1>
+            <p className="text-xs text-muted-foreground text-mobile-safe">Chat with your document</p>
           </div>
         </div>
       </header>
@@ -244,12 +245,12 @@ const ChatPage = () => {
       <div className="flex-1 flex flex-col overflow-hidden min-h-0">
         <div
           ref={scrollContainerRef}
-          className="flex-1 overflow-y-auto min-h-0"
+          className="flex-1 overflow-y-auto min-h-0 overflow-x-hidden"
         >
           {messages.length === 0 ? (
             <EmptyChat onPromptClick={handleSendMessage} />
           ) : (
-            <div className="max-w-4xl mx-auto px-6 py-6 space-y-6">
+            <div className="max-w-4xl mx-auto px-4 sm:px-6 py-4 sm:py-6 space-y-6">
               <AnimatePresence mode="popLayout">
                 {messages.map((message) => (
                   <MessageBubble key={message.id} message={message} />

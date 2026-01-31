@@ -156,7 +156,7 @@ const DocumentCard = ({ document }: DocumentCardProps) => {
           <div className="flex items-start justify-between gap-2 mb-2">
             <h3 className="font-medium truncate">{document.name}</h3>
             <span className={cn(
-              'inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium whitespace-nowrap',
+              'inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-mobile-safe font-medium whitespace-nowrap min-[640px]:text-xs',
               status.className
             )}>
               <StatusIcon className={cn(
@@ -191,26 +191,27 @@ const DocumentCard = ({ document }: DocumentCardProps) => {
             </div>
           )}
 
-          {/* Actions */}
-          <div className="flex items-center gap-2">
+          {/* Actions - touch-friendly on mobile */}
+          <div className="flex flex-wrap items-center gap-2">
             {document.status === 'DONE' && (
               <Link to={`/chat/${document.id}`}>
-                <Button variant="default" size="sm">
-                  <MessageSquare className="w-4 h-4 mr-1.5" />
+                <Button variant="default" size="sm" className="min-h-touch">
+                  <MessageSquare className="w-4 h-4 mr-1.5 shrink-0" />
                   Chat
                 </Button>
               </Link>
             )}
             {document.status === 'FAILED' && (
-              <Button variant="outline" size="sm" onClick={handleRetry} disabled={isRetrying}>
+              <Button variant="outline" size="sm" onClick={handleRetry} disabled={isRetrying} className="min-h-touch">
                 {isRetrying ? 'Retrying...' : 'Retry'}
               </Button>
             )}
             <Button
               variant="ghost"
-              size="sm"
+              size="icon"
               onClick={handleDeleteClick}
-              className="text-muted-foreground hover:text-destructive opacity-0 group-hover:opacity-100 transition-opacity"
+              className="min-h-touch min-w-touch md:min-h-0 md:min-w-0 text-muted-foreground hover:text-destructive opacity-0 group-hover:opacity-100 transition-opacity touch-manipulation"
+              aria-label="Delete document"
             >
               <Trash2 className="w-4 h-4" />
             </Button>

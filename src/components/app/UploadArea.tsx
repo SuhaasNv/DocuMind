@@ -158,7 +158,7 @@ const UploadArea = () => {
           onDragLeave={handleDragLeave}
           onDrop={handleDrop}
           className={cn(
-            'relative border-2 border-dashed rounded-2xl p-12 text-center transition-all duration-300',
+            'relative border-2 border-dashed rounded-2xl p-6 sm:p-12 text-center transition-all duration-300',
             isDragOver
               ? 'border-primary bg-primary/5'
               : 'border-border/50 hover:border-primary/50 hover:bg-card/50',
@@ -173,10 +173,10 @@ const UploadArea = () => {
             <Upload className="w-8 h-8 text-primary" />
           </motion.div>
 
-          <h3 className="text-xl font-semibold mb-2">
+          <h3 className="text-lg sm:text-xl font-semibold mb-2">
             {isDragOver ? 'Drop your PDF here' : 'Upload a document'}
           </h3>
-          <p className="text-muted-foreground mb-6">
+          <p className="text-muted-foreground text-mobile-safe mb-6">
             Drag and drop your PDF file, or click to browse
           </p>
 
@@ -194,7 +194,7 @@ const UploadArea = () => {
             Choose PDF
           </Button>
 
-          <p className="mt-4 text-xs text-muted-foreground">
+          <p className="mt-4 text-mobile-safe text-muted-foreground">
             Supports PDF files up to 50MB
           </p>
         </div>

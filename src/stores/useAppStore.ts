@@ -52,6 +52,9 @@ interface AppState {
   isUploading: boolean;
   documentSearchQuery: string;
   setDocumentSearchQuery: (query: string) => void;
+  /** Mobile only: sheet (drawer) open state. Not persisted. */
+  mobileMenuOpen: boolean;
+  setMobileMenuOpen: (open: boolean) => void;
 
   // SSE abort (not persisted): call to abort active chat stream on logout
   abortActiveSSE: (() => void) | null;
@@ -90,6 +93,8 @@ export const useAppStore = create<AppState>()(
       isUploading: false,
       documentSearchQuery: '',
       setDocumentSearchQuery: (query) => set({ documentSearchQuery: query }),
+      mobileMenuOpen: false,
+      setMobileMenuOpen: (open) => set({ mobileMenuOpen: open }),
       abortActiveSSE: null,
       setAbortActiveSSE: (fn) => set({ abortActiveSSE: fn }),
 

@@ -2,8 +2,11 @@ import { useState, useEffect } from 'react';
 import { Outlet } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import Sidebar from '@/components/app/Sidebar';
+import SidebarContent from '@/components/app/SidebarContent';
+import { Sheet, SheetContent } from '@/components/ui/sheet';
 import { useAppStore } from '@/stores/useAppStore';
 import { usePreferencesStore } from '@/stores/usePreferencesStore';
+import { useIsMobile, useIsDesktop } from '@/hooks/use-mobile';
 
 /**
  * Prevents any authenticated API call (SSE, chat, documents) from running before
@@ -13,7 +16,10 @@ import { usePreferencesStore } from '@/stores/usePreferencesStore';
  */
 const AppLayout = () => {
   const [hydrated, setHydrated] = useState(false);
+  const isMobile = useIsMobile();
+  const isDesktop = useIsDesktop();
   const persist = useAppStore.persist;
+  const { mobileMenuOpen, setMobileMenuOpen, setSidebarOpen } = useAppStore();
   const enableAnimations = usePreferencesStore((s) => s.enableAnimations);
 
   useEffect(() => {
@@ -22,15 +28,16 @@ const AppLayout = () => {
       return;
     }
     const unsub = persist.onFinishHydration(() => setHydrated(true));
-    // Fallback: if hydration doesn't complete (e.g. corrupt storage), show app after 3s
-    const timeout = setTimeout(() => {
-      setHydrated(true);
-    }, 3000);
+    const timeout = setTimeout(() => setHydrated(true), 3000);
     return () => {
       unsub();
       clearTimeout(timeout);
     };
   }, [persist]);
+
+  useEffect(() => {
+    if (isDesktop) setSidebarOpen(true);
+  }, [isDesktop, setSidebarOpen]);
 
   if (!hydrated) {
     return (
@@ -46,21 +53,37 @@ const AppLayout = () => {
 
   const MainContent = enableAnimations ? motion.div : 'div';
   const mainContentProps = enableAnimations
-    ? { initial: { opacity: 0 }, animate: { opacity: 1 }, transition: { duration: 0.3 } }
+    ? { initial: { opacity: 0 }, animate: { opacity: 1 }, transition: { duration: 0.2 } }
     : {};
 
   return (
     <div className="flex h-screen overflow-hidden bg-background">
-      {/* Noise overlay */}
       <div className="noise-overlay" />
 
-      {/* Sidebar */}
+      {/* Mobile: sidebar as slide-in drawer from left */}
+      {isMobile && (
+        <Sheet open={mobileMenuOpen} onOpenChange={setMobileMenuOpen}>
+          <SheetContent
+            side="left"
+            className="w-[280px] max-w-[85vw] bg-sidebar border-sidebar-border p-0 pt-safe pl-safe flex flex-col gap-0 data-[state=open]:duration-200 data-[state=closed]:duration-200 [&>button]:top-safe"
+          >
+            <div className="flex-1 flex flex-col min-h-0 overflow-hidden">
+              <SidebarContent
+                isExpanded={true}
+                isMobileSheet={true}
+                showLogo={true}
+                onLinkClick={() => setMobileMenuOpen(false)}
+              />
+            </div>
+          </SheetContent>
+        </Sheet>
+      )}
+
       <Sidebar />
 
-      {/* Main content */}
       <MainContent
         {...mainContentProps}
-        className="flex-1 flex flex-col overflow-hidden"
+        className="flex-1 flex flex-col overflow-hidden min-w-0"
       >
         <Outlet />
       </MainContent>

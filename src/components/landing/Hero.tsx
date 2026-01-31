@@ -5,10 +5,25 @@ import { Button } from '@/components/ui/button';
 import { useAppStore } from '@/stores/useAppStore';
 import heroBackground from '@/assets/hero-background.jpg';
 
+const COMPANIES = [
+  'Acme Corp',
+  'TechStart',
+  'DataFlow',
+  'CloudSync',
+  'DocuLabs',
+  'Paperwise',
+  'Nexus AI',
+  'Summit Legal',
+  'VaultDocs',
+  'InsightIQ',
+  'ByteForge',
+  'ScaleUp',
+];
+
 const Hero = () => {
   const isAuthenticated = useAppStore((s) => s.isAuthenticated);
   return (
-    <section className="relative min-h-screen flex items-center justify-center overflow-hidden">
+    <section className="relative min-h-screen min-h-[100dvh] flex flex-col items-center justify-start sm:justify-center overflow-hidden pt-safe pb-8 sm:pt-0 sm:pb-0">
       {/* Background image */}
       <div 
         className="absolute inset-0 bg-cover bg-center bg-no-repeat opacity-40"
@@ -50,16 +65,16 @@ const Hero = () => {
         }}
       />
 
-      {/* Content */}
-      <div className="relative z-10 container mx-auto px-6 text-center">
+      {/* Content: on mobile add top padding so badge sits below fixed navbar; on sm+ centered */}
+      <div className="relative z-10 container mx-auto px-4 sm:px-6 text-center overflow-hidden w-full flex flex-col items-center pt-[calc(6rem+env(safe-area-inset-top,0px))] sm:pt-0">
         <motion.div
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.6 }}
-          className="mb-6"
+          className="mb-4 sm:mb-6 shrink-0"
         >
-          <span className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-primary/10 border border-primary/20 text-primary text-sm font-medium">
-            <Sparkles className="w-4 h-4" />
+          <span className="inline-flex items-center gap-2 px-3 py-2 sm:px-4 rounded-full bg-primary/10 border border-primary/20 text-primary text-mobile-safe font-medium text-center">
+            <Sparkles className="w-4 h-4 shrink-0" />
             AI-Powered Document Intelligence
           </span>
         </motion.div>
@@ -68,7 +83,7 @@ const Hero = () => {
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.6, delay: 0.1 }}
-          className="text-5xl md:text-6xl lg:text-7xl font-bold tracking-tight mb-6"
+          className="text-3xl xs:text-4xl sm:text-5xl md:text-6xl lg:text-7xl font-bold tracking-tight mb-6 max-w-none"
         >
           Chat with your documents.
           <br />
@@ -79,7 +94,7 @@ const Hero = () => {
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.6, delay: 0.2 }}
-          className="text-lg md:text-xl text-muted-foreground max-w-2xl mx-auto mb-10"
+          className="text-base sm:text-lg md:text-xl text-muted-foreground max-w-2xl mx-auto mb-8 sm:mb-10 text-mobile-safe"
         >
           Upload PDFs, and let AI understand them for you. Ask questions, get answers 
           grounded in your documents — no hallucinations, just facts.
@@ -104,22 +119,24 @@ const Hero = () => {
           </Link>
         </motion.div>
 
-        {/* Social proof */}
+        {/* Social proof – slow horizontal marquee, fixed in the middle */}
         <motion.div
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           transition={{ duration: 0.6, delay: 0.5 }}
-          className="mt-16 pt-8 border-t border-border/30"
+          className="mt-16 pt-8 border-t border-border/30 w-full flex flex-col items-center"
         >
           <p className="text-sm text-muted-foreground mb-4">
             Trusted by teams at
           </p>
-          <div className="flex items-center justify-center gap-8 opacity-50">
-            {['Acme Corp', 'TechStart', 'DataFlow', 'CloudSync'].map((company) => (
-              <span key={company} className="text-lg font-semibold text-muted-foreground">
-                {company}
-              </span>
-            ))}
+          <div className="overflow-hidden w-full max-w-xl mx-auto" aria-hidden="true">
+            <div className="flex w-max animate-marquee-horizontal gap-8 opacity-50">
+              {[...COMPANIES, ...COMPANIES].map((company, i) => (
+                <span key={`${company}-${i}`} className="text-lg font-semibold text-muted-foreground whitespace-nowrap shrink-0">
+                  {company}
+                </span>
+              ))}
+            </div>
           </div>
         </motion.div>
       </div>
