@@ -18,6 +18,7 @@ import NotFound from "./pages/NotFound";
 import AppLayout from "./components/app/AppLayout";
 import BackendHealthBanner from "./components/app/BackendHealthBanner";
 import ProtectedRoute from "./components/app/ProtectedRoute";
+import ScrollToTop from "./components/ScrollToTop";
 
 const queryClient = new QueryClient();
 
@@ -34,6 +35,7 @@ const App = () => (
           v7_relativeSplatPath: true,
         }}
       >
+        <ScrollToTop />
         <Routes>
           {/* Public routes */}
           <Route path="/" element={<Index />} />

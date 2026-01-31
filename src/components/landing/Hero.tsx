@@ -24,11 +24,23 @@ const Hero = () => {
   const isAuthenticated = useAppStore((s) => s.isAuthenticated);
   return (
     <section className="relative min-h-screen min-h-[100dvh] flex flex-col items-center justify-start sm:justify-center overflow-hidden pt-safe pb-[max(5rem,calc(4rem+env(safe-area-inset-bottom,0px)))] sm:pt-0 sm:pb-0">
-      {/* Background image */}
-      <div 
-        className="absolute inset-0 bg-cover bg-center bg-no-repeat opacity-40"
-        style={{ backgroundImage: `url(${heroBackground})` }}
-      />
+      {/* Background image – Ken Burns style slow pan & zoom */}
+      <div className="absolute inset-0 overflow-hidden">
+        <div
+          className="absolute inset-0 hero-bg-kenburns bg-no-repeat bg-center opacity-40"
+          style={{
+            backgroundImage: `url(${heroBackground})`,
+            backgroundSize: '120%',
+          }}
+        />
+      </div>
+
+      {/* Floating particle glows (teal) */}
+      <div className="absolute inset-0 pointer-events-none overflow-hidden" aria-hidden>
+        <div className="hero-particle-1 absolute top-[20%] left-[15%] w-32 h-32 rounded-full bg-primary/25 blur-3xl" />
+        <div className="hero-particle-2 absolute top-[60%] right-[20%] w-40 h-40 rounded-full bg-primary/20 blur-[60px]" />
+        <div className="hero-particle-3 absolute bottom-[30%] left-[25%] w-24 h-24 rounded-full bg-primary/30 blur-2xl" />
+      </div>
       
       {/* Overlay gradient */}
       <div className="absolute inset-0 bg-gradient-to-b from-background/80 via-background/60 to-background" />
