@@ -1,8 +1,20 @@
+import { useState } from 'react';
 import { motion } from 'framer-motion';
 import { FileText, MessageSquare, Trash2, Clock, AlertTriangle, CheckCircle, Loader2 } from 'lucide-react';
 import { Link } from 'react-router-dom';
+import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
 import { Document, DocumentStatus, useAppStore } from '@/stores/useAppStore';
 import { getApiBaseUrl } from '@/lib/api';
 import { formatDistanceToNow } from 'date-fns';
@@ -39,26 +51,90 @@ const statusConfig: Record<DocumentStatus, {
 };
 
 const DocumentCard = ({ document }: DocumentCardProps) => {
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+  const [isDeleting, setIsDeleting] = useState(false);
+  const [isRetrying, setIsRetrying] = useState(false);
   const removeDocument = useAppStore((state) => state.removeDocument);
+  const updateDocument = useAppStore((state) => state.updateDocument);
   const accessToken = useAppStore((state) => state.accessToken);
   const status = statusConfig[document.status];
   const StatusIcon = status.icon;
 
-  const handleDelete = async (e: React.MouseEvent) => {
+  const handleDeleteClick = (e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setDeleteDialogOpen(true);
+  };
+
+  const handleDeleteConfirm = async () => {
+    const base = getApiBaseUrl();
+    if (!accessToken || !base) {
+      toast.error('Not configured. Set VITE_API_URL and log in.');
+      setDeleteDialogOpen(false);
+      return;
+    }
+    setIsDeleting(true);
+    try {
+      const res = await fetch(`${base}/documents/${document.id}`, {
+        method: 'DELETE',
+        headers: { Authorization: `Bearer ${accessToken}` },
+      });
+      if (!res.ok) {
+        let message = 'Failed to delete document';
+        try {
+          const data = (await res.json()) as { message?: string };
+          if (typeof data.message === 'string') message = data.message;
+        } catch {
+          // ignore non-JSON body
+        }
+        toast.error(message);
+        setIsDeleting(false);
+        setDeleteDialogOpen(false);
+        return;
+      }
+      removeDocument(document.id);
+      setDeleteDialogOpen(false);
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Failed to delete document');
+    } finally {
+      setIsDeleting(false);
+      setDeleteDialogOpen(false);
+    }
+  };
+
+  const handleRetry = async (e: React.MouseEvent) => {
     e.preventDefault();
     e.stopPropagation();
     const base = getApiBaseUrl();
-    if (accessToken && base) {
-      try {
-        await fetch(`${base}/documents/${document.id}`, {
-          method: 'DELETE',
-          headers: { Authorization: `Bearer ${accessToken}` },
-        });
-      } catch {
-        // Remove from UI anyway; backend may be unreachable
-      }
+    if (!accessToken || !base) {
+      toast.error('Not configured. Set VITE_API_URL and log in.');
+      return;
     }
-    removeDocument(document.id);
+    setIsRetrying(true);
+    try {
+      const res = await fetch(`${base}/documents/${document.id}/retry`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${accessToken}` },
+      });
+      if (!res.ok) {
+        let message = 'Failed to retry';
+        try {
+          const data = (await res.json()) as { message?: string };
+          if (typeof data.message === 'string') message = data.message;
+        } catch {
+          // ignore non-JSON body
+        }
+        toast.error(message);
+        setIsRetrying(false);
+        return;
+      }
+      updateDocument(document.id, { status: 'PENDING', progress: 0 });
+      toast.success('Retry started. The document will be processed again.');
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Failed to retry');
+    } finally {
+      setIsRetrying(false);
+    }
   };
 
   return (
@@ -126,14 +202,14 @@ const DocumentCard = ({ document }: DocumentCardProps) => {
               </Link>
             )}
             {document.status === 'FAILED' && (
-              <Button variant="outline" size="sm">
-                Retry
+              <Button variant="outline" size="sm" onClick={handleRetry} disabled={isRetrying}>
+                {isRetrying ? 'Retrying...' : 'Retry'}
               </Button>
             )}
             <Button
               variant="ghost"
               size="sm"
-              onClick={handleDelete}
+              onClick={handleDeleteClick}
               className="text-muted-foreground hover:text-destructive opacity-0 group-hover:opacity-100 transition-opacity"
             >
               <Trash2 className="w-4 h-4" />
@@ -141,6 +217,30 @@ const DocumentCard = ({ document }: DocumentCardProps) => {
           </div>
         </div>
       </div>
+
+      <AlertDialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
+        <AlertDialogContent onClick={(e) => e.stopPropagation()}>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete document?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This will permanently delete &quot;{document.name}&quot;. This cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={isDeleting}>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={(e) => {
+                e.preventDefault();
+                handleDeleteConfirm();
+              }}
+              disabled={isDeleting}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            >
+              {isDeleting ? 'Deleting...' : 'Delete'}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </motion.div>
   );
 };

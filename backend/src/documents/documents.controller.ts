@@ -177,4 +177,12 @@ export class DocumentsController {
   ): Promise<void> {
     await this.documentsService.remove(id, user.sub);
   }
+
+  @Post(':id/retry')
+  async retry(
+    @Param('id') id: string,
+    @CurrentUser() user: JwtPayload,
+  ): Promise<DocumentResponseDto> {
+    return this.documentsService.retry(id, user.sub);
+  }
 }

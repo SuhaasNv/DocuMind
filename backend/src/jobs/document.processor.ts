@@ -5,7 +5,6 @@ import path from 'node:path';
 import type { Job } from 'bullmq';
 import { DocumentStatus } from '../../generated/prisma/enums.js';
 import { PrismaService } from '../prisma/prisma.service.js';
-import { EventsGateway } from '../events/events.gateway.js';
 import { EmbeddingService } from '../embedding/embedding.service.js';
 import { DocumentChunkService } from '../chunks/document-chunk.service.js';
 import { chunkText } from '../lib/chunking.js';
@@ -28,7 +27,6 @@ export class DocumentProcessor extends WorkerHost {
 
   constructor(
     private readonly prisma: PrismaService,
-    private readonly eventsGateway: EventsGateway,
     private readonly embeddingService: EmbeddingService,
     private readonly documentChunkService: DocumentChunkService,
   ) {
@@ -125,17 +123,13 @@ export class DocumentProcessor extends WorkerHost {
 
   private async updateProgress(
     documentId: string,
-    userId: string,
+    _userId: string,
     updates: { status?: DocumentStatus; progress?: number },
   ): Promise<boolean> {
     try {
-      const doc = await this.prisma.document.update({
+      await this.prisma.document.update({
         where: { id: documentId },
         data: updates,
-      });
-      this.eventsGateway.emitDocumentUpdated(userId, {
-        documentId: doc.id,
-        updates: { status: doc.status, progress: doc.progress },
       });
       return true;
     } catch (e: unknown) {

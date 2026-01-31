@@ -38,6 +38,9 @@ const Navbar = () => {
             <Link to="/pricing" className="text-sm text-muted-foreground hover:text-foreground transition-colors">
               Pricing
             </Link>
+            <Link to="/how-it-works" className="text-sm text-muted-foreground hover:text-foreground transition-colors">
+              How it works
+            </Link>
             <Link to="/docs" className="text-sm text-muted-foreground hover:text-foreground transition-colors">
               Docs
             </Link>

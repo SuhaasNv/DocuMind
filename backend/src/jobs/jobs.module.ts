@@ -1,7 +1,6 @@
 import { Module } from '@nestjs/common';
 import { BullModule } from '@nestjs/bullmq';
 import { DocumentProcessor } from './document.processor.js';
-import { EventsModule } from '../events/events.module.js';
 import { ChunksModule } from '../chunks/chunks.module.js';
 
 const QUEUE_NAME = 'document-processing';
@@ -24,7 +23,6 @@ const QUEUE_NAME = 'document-processing';
         removeOnFail: false,
       },
     }),
-    EventsModule,
     ChunksModule,
   ],
   providers: [DocumentProcessor],

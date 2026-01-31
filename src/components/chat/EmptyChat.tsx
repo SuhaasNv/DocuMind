@@ -2,8 +2,10 @@ import { motion } from 'framer-motion';
 import { MessageSquare } from 'lucide-react';
 
 const SUGGESTIONS = [
-  'What are the main topics covered?',
+  'What is the main topic of this document?',
   'Summarize the key points',
+  'Summarize section 3',
+  'What risks are mentioned?',
 ];
 
 interface EmptyChatProps {
@@ -34,9 +36,9 @@ const EmptyChat = ({ onPromptClick }: EmptyChatProps) => {
           <MessageSquare className="w-10 h-10 text-primary" />
         </motion.div>
 
-        <h2 className="text-2xl font-semibold mb-3">Start a Conversation</h2>
+        <h2 className="text-2xl font-semibold mb-3">Start a conversation</h2>
         <p className="text-muted-foreground mb-6">
-          Ask a question to begin chatting with your document. The AI will provide answers grounded in the content you uploaded.
+          Ask anything about your document. Answers are grounded in the content you uploaded—no guessing.
         </p>
 
         {/* Suggestions */}

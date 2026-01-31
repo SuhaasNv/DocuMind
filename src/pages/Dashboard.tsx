@@ -82,12 +82,12 @@ const Dashboard = () => {
                   <FileText className="w-10 h-10 text-muted-foreground" />
                 </div>
                 <h3 className="text-lg font-medium mb-2">
-                  {documentSearchQuery.trim() ? 'No documents match your search' : 'No documents yet'}
+                  {documentSearchQuery.trim() ? 'No documents match your search' : 'You don\'t have any documents yet'}
                 </h3>
                 <p className="text-muted-foreground">
                   {documentSearchQuery.trim()
-                    ? 'Try a different search term or clear the search.'
-                    : 'Upload a PDF to start chatting with your documents'}
+                    ? 'Try a different search term or clear the search to see all documents.'
+                    : 'Upload your first PDF above. We\'ll process it in the background and you can chat with it in under a minute.'}
                 </p>
               </motion.div>
             ) : (

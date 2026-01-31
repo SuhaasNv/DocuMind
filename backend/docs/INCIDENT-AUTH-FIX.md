@@ -25,9 +25,8 @@ This document summarizes the root causes of the auth/infra failures (401 Unautho
 ### Backend
 
 1. **JWT from ConfigService (single source of truth)**  
-   - `AuthModule` and `EventsModule` use `JwtModule.registerAsync` with `ConfigService.getOrThrow('JWT_SECRET')`.  
+   - `AuthModule` uses `JwtModule.registerAsync` with `ConfigService.getOrThrow('JWT_SECRET')`.  
    - `JwtStrategy` injects `ConfigService` and uses `configService.getOrThrow('JWT_SECRET')` for `secretOrKey`.  
-   - `EventsGateway` uses `this.jwtService.verify(token)` (no inline secret).  
    - Removed all `process.env.JWT_SECRET || 'change-me-in-production'` fallbacks so missing secret fails fast.
 
 2. **Startup env validation**  
@@ -60,7 +59,7 @@ Ensure `backend/.env` exists (copy from `backend/.env.example`) and:
 | `REDIS_HOST` | Yes for BullMQ | `localhost` when Redis runs in Docker with port 6379 published. |
 | `REDIS_PORT` | Yes for BullMQ | `6379` |
 | `PORT` | No | Default 3000 |
-| `CORS_ORIGIN` | No | e.g. `http://localhost:5173` for Vite dev |
+| `CORS_ORIGIN` | No | e.g. `http://localhost:8080` for Vite dev |
 
 **Do not** use container names (e.g. `postgres`, `redis`) as hostnames in `.env` when the backend runs on the host. Use `localhost` and the published ports (5432, 6379).
 

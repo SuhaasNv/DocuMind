@@ -15,6 +15,7 @@ import { getApiBaseUrl } from '@/lib/api';
 
 const THROTTLE_MS = 40;
 const SCROLL_THRESHOLD_PX = 120;
+const SSE_TIMEOUT_MS = 90000;
 
 const ChatPage = () => {
   const { documentId } = useParams<{ documentId: string }>();
@@ -22,6 +23,7 @@ const ChatPage = () => {
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   const streamAbortRef = useRef<AbortController | null>(null);
+  const streamTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const isMountedRef = useRef(true);
 
   const {
@@ -54,10 +56,20 @@ const ChatPage = () => {
 
   useEffect(() => {
     isMountedRef.current = true;
-    setAbortActiveSSE(() => () => streamAbortRef.current?.abort());
+    setAbortActiveSSE(() => () => {
+      if (streamTimeoutRef.current) {
+        clearTimeout(streamTimeoutRef.current);
+        streamTimeoutRef.current = null;
+      }
+      streamAbortRef.current?.abort();
+    });
     return () => {
       isMountedRef.current = false;
       setAbortActiveSSE(null);
+      if (streamTimeoutRef.current) {
+        clearTimeout(streamTimeoutRef.current);
+        streamTimeoutRef.current = null;
+      }
       streamAbortRef.current?.abort();
       const docId = documentId ?? null;
       const conv = docId ? useAppStore.getState().conversations[docId] : null;
@@ -88,7 +100,7 @@ const ChatPage = () => {
         addMessage(documentId, {
           id: `msg-${Date.now() + 1}`,
           role: 'assistant',
-          content: 'Sorry, the app is not configured. Add VITE_API_URL to .env at the project root and restart the dev server.',
+          content: 'Backend URL is not configured. Add VITE_API_URL to .env at the project root and restart the dev server.',
           timestamp: new Date(),
         });
         return;
@@ -138,6 +150,21 @@ const ChatPage = () => {
         throttleTimer = setTimeout(flush, THROTTLE_MS);
       };
 
+      const clearStreamTimeout = () => {
+        if (streamTimeoutRef.current) {
+          clearTimeout(streamTimeoutRef.current);
+          streamTimeoutRef.current = null;
+        }
+      };
+
+      streamTimeoutRef.current = setTimeout(() => {
+        streamTimeoutRef.current = null;
+        streamAbortRef.current?.abort();
+        if (!isMountedRef.current || currentDocumentId !== documentId) return;
+        updateMessage(documentId, assistantId, 'Request timed out. Please try again.');
+        setStreaming(documentId, assistantId, false);
+      }, SSE_TIMEOUT_MS);
+
       await streamChat(
         documentId,
         content,
@@ -148,6 +175,7 @@ const ChatPage = () => {
             scheduleFlush();
           },
           onDone: (sources) => {
+            clearStreamTimeout();
             if (throttleTimer !== null) {
               clearTimeout(throttleTimer);
               throttleTimer = null;
@@ -159,6 +187,7 @@ const ChatPage = () => {
             if (sources.length > 0) setMessageSources(documentId, assistantId, sources);
           },
           onError: (message) => {
+            clearStreamTimeout();
             if (throttleTimer !== null) {
               clearTimeout(throttleTimer);
               throttleTimer = null;
@@ -196,7 +225,7 @@ const ChatPage = () => {
           <div className="text-center">
             <FileText className="w-16 h-16 text-muted-foreground mx-auto mb-4" />
             <h2 className="text-xl font-semibold mb-2">Document not found</h2>
-            <p className="text-muted-foreground mb-4">The document you're looking for doesn't exist.</p>
+            <p className="text-muted-foreground mb-4">This document isn't in your library. It may have been deleted or the link is outdated.</p>
             <Button onClick={() => navigate('/app')}>
               <ArrowLeft className="w-4 h-4 mr-2" />
               Back to Documents

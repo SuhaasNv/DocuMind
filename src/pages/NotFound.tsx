@@ -35,7 +35,7 @@ const NotFound = () => {
 
         <h1 className="text-2xl md:text-3xl font-bold mb-4">Page not found</h1>
         <p className="text-muted-foreground mb-8 max-w-md mx-auto">
-          The page you're looking for doesn't exist or has been moved.
+          We couldn't find this page. It may have been moved or the URL is incorrect.
         </p>
 
         <div className="flex flex-col sm:flex-row gap-4 justify-center">

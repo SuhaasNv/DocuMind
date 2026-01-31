@@ -5,12 +5,12 @@ import {
   BadRequestException,
   Logger,
 } from '@nestjs/common';
-import { mkdir, writeFile } from 'node:fs/promises';
+import { mkdir, writeFile, unlink } from 'node:fs/promises';
 import path from 'node:path';
 import { DocumentStatus } from '../../generated/prisma/enums.js';
 import type { Document as PrismaDocument } from '../../generated/prisma/client.js';
 import { PrismaService } from '../prisma/prisma.service.js';
-import { EventsGateway } from '../events/events.gateway.js';
+import { DocumentChunkService } from '../chunks/document-chunk.service.js';
 import { InjectQueue } from '@nestjs/bullmq';
 import { Queue } from 'bullmq';
 import type { DocumentResponseDto } from './dto/document-response.dto.js';
@@ -26,7 +26,7 @@ export class DocumentsService {
 
   constructor(
     private readonly prisma: PrismaService,
-    private readonly eventsGateway: EventsGateway,
+    private readonly documentChunkService: DocumentChunkService,
     @InjectQueue(QUEUE_NAME) private readonly documentQueue: Queue,
   ) {}
 
@@ -73,9 +73,7 @@ export class DocumentsService {
       `Document ${document.id} queued for processing. Ensure Redis is running; watch for "processed successfully" or "processing failed" in logs.`,
     );
 
-    const response = this.toResponse(documentWithPath as PrismaDocument);
-    this.eventsGateway.emitDocumentCreated(userId, response);
-    return response;
+    return this.toResponse(documentWithPath as PrismaDocument);
   }
 
   async findAllByUser(userId: string): Promise<DocumentResponseDto[]> {
@@ -110,7 +108,53 @@ export class DocumentsService {
       throw new ForbiddenException('Access denied');
     }
     await this.prisma.document.delete({ where: { id } });
-    this.eventsGateway.emitDocumentDeleted(userId, id);
+
+    if (document.filePath) {
+      try {
+        const absolutePath = path.join(process.cwd(), document.filePath);
+        await unlink(absolutePath);
+      } catch (err) {
+        this.logger.warn(
+          `Failed to delete file for document ${id} at ${document.filePath}: ${err instanceof Error ? err.message : String(err)}`,
+        );
+      }
+    }
+  }
+
+  /**
+   * Re-enqueue a FAILED document for processing. Clears existing chunks, sets status to PENDING, and adds job.
+   */
+  async retry(id: string, userId: string): Promise<DocumentResponseDto> {
+    const document = await this.prisma.document.findUnique({
+      where: { id },
+    });
+    if (!document) {
+      throw new NotFoundException('Document not found');
+    }
+    if (document.userId !== userId) {
+      throw new ForbiddenException('Access denied');
+    }
+    if (document.status !== DocumentStatus.FAILED) {
+      throw new BadRequestException(
+        `Document cannot be retried. Current status: ${document.status}. Only FAILED documents can be retried.`,
+      );
+    }
+    if (!document.filePath) {
+      throw new BadRequestException('Document has no file path; cannot retry.');
+    }
+
+    await this.documentChunkService.deleteByDocumentId(id);
+    const updated = await this.prisma.document.update({
+      where: { id },
+      data: { status: DocumentStatus.PENDING, progress: 0 },
+    });
+    await this.documentQueue.add(
+      'process',
+      { documentId: id, userId },
+      { attempts: 3, backoff: { type: 'exponential', delay: 2000 } },
+    );
+    this.logger.log(`Document ${id} re-queued for processing (retry).`);
+    return this.toResponse(updated as PrismaDocument);
   }
 
   /**
@@ -131,23 +175,15 @@ export class DocumentsService {
 
   /**
    * Called by job processor (or external) to update progress/status.
-   * Emits document.updated via EventsGateway (only to document owner).
    * Throws if document not found (e.g. deleted during processing) — processor should catch and exit.
    */
   async updateProgress(
     documentId: string,
     updates: { status?: DocumentStatus; progress?: number },
   ): Promise<void> {
-    const document = await this.prisma.document.update({
+    await this.prisma.document.update({
       where: { id: documentId },
       data: updates,
-    });
-    this.eventsGateway.emitDocumentUpdated(document.userId, {
-      documentId: document.id,
-      updates: {
-        status: document.status,
-        progress: document.progress,
-      },
     });
   }
 

@@ -4,11 +4,11 @@ import { DocumentsService } from './documents.service.js';
 import { RetrievalService } from './retrieval.service.js';
 import { RagOrchestratorService } from './rag-orchestrator.service.js';
 import { RagModule } from '../rag/rag.module.js';
-import { EventsModule } from '../events/events.module.js';
 import { JobsModule } from '../jobs/jobs.module.js';
+import { ChunksModule } from '../chunks/chunks.module.js';
 
 @Module({
-  imports: [RagModule, EventsModule, JobsModule],
+  imports: [RagModule, JobsModule, ChunksModule],
   controllers: [DocumentsController],
   providers: [DocumentsService, RetrievalService, RagOrchestratorService],
   exports: [DocumentsService, RetrievalService],

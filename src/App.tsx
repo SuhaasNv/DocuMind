@@ -10,12 +10,14 @@ import FeaturesPage from "./pages/FeaturesPage";
 import PricingPage from "./pages/PricingPage";
 import DocsPage from "./pages/DocsPage";
 import AboutPage from "./pages/AboutPage";
+import HowItWorksPage from "./pages/HowItWorksPage";
 import Dashboard from "./pages/Dashboard";
 import ChatPage from "./pages/ChatPage";
 import SettingsPage from "./pages/SettingsPage";
 import NotFound from "./pages/NotFound";
 import AppLayout from "./components/app/AppLayout";
 import BackendHealthBanner from "./components/app/BackendHealthBanner";
+import ProtectedRoute from "./components/app/ProtectedRoute";
 
 const queryClient = new QueryClient();
 
@@ -41,13 +43,14 @@ const App = () => (
           <Route path="/pricing" element={<PricingPage />} />
           <Route path="/docs" element={<DocsPage />} />
           <Route path="/about" element={<AboutPage />} />
+          <Route path="/how-it-works" element={<HowItWorksPage />} />
           
-          {/* App routes (with sidebar layout) */}
-          <Route path="/app" element={<AppLayout />}>
+          {/* App routes (protected; sidebar layout) */}
+          <Route path="/app" element={<ProtectedRoute><AppLayout /></ProtectedRoute>}>
             <Route index element={<Dashboard />} />
             <Route path="settings" element={<SettingsPage />} />
           </Route>
-          <Route path="/chat/:documentId" element={<AppLayout />}>
+          <Route path="/chat/:documentId" element={<ProtectedRoute><AppLayout /></ProtectedRoute>}>
             <Route index element={<ChatPage />} />
           </Route>
           

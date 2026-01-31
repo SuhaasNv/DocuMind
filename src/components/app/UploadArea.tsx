@@ -1,4 +1,4 @@
-import { useState, useCallback, useRef } from 'react';
+import { useState, useCallback, useRef, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Upload, FileText, X, AlertCircle } from 'lucide-react';
 import { cn } from '@/lib/utils';
@@ -89,20 +89,27 @@ const UploadArea = () => {
     pollRef.current[docId] = setInterval(poll, POLL_INTERVAL_MS);
   }, []);
 
+  useEffect(() => {
+    return () => {
+      Object.values(pollRef.current).forEach((id) => clearInterval(id));
+      pollRef.current = {};
+    };
+  }, []);
+
   const handleFiles = useCallback(
     async (files: File[]) => {
       const pdfFiles = files.filter((file) => file.type === 'application/pdf');
       if (pdfFiles.length === 0) {
-        setUploadError('Please upload PDF files only');
+        setUploadError('Only PDF files are supported. Please select a PDF to upload.');
         return;
       }
       if (!accessToken) {
-        setUploadError('Please log in to upload documents');
+        setUploadError('Sign in to upload documents.');
         return;
       }
       const base = getApiBaseUrl();
       if (!base) {
-        setUploadError('VITE_API_URL is not set in .env');
+        setUploadError('Backend URL is not configured. Add VITE_API_URL to .env and restart the dev server.');
         return;
       }
 
@@ -130,7 +137,7 @@ const UploadArea = () => {
           addDocument(doc);
           pollDocumentStatus(doc.id);
         } catch (err) {
-          setUploadError(err instanceof Error ? err.message : 'Upload failed');
+          setUploadError(err instanceof Error ? err.message : 'Upload failed. Check your connection and try again.');
         }
       }
 

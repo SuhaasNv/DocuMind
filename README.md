@@ -17,6 +17,8 @@
 - [Architecture](#architecture)
 - [Prerequisites](#prerequisites)
 - [Quick Start](#quick-start)
+- [Demo Walkthrough](#demo-walkthrough)
+- [Known Limitations](#known-limitations)
 - [Environment Variables](#environment-variables)
 - [Project Structure](#project-structure)
 - [Available Scripts](#available-scripts)
@@ -73,7 +75,7 @@
 | File parse  | pdf-parse (PDF text extraction) |
 | Embeddings  | Configurable: stub (dev) or OpenAI |
 | LLM         | Configurable: stub, [Ollama](https://ollama.ai/) (streaming), or OpenAI (non-streaming) |
-| WebSockets  | Socket.IO (EventsGateway) for document events; frontend currently uses polling |
+| Document status | Polling (frontend polls GET /documents/:id every 2s for in-progress docs) |
 | Testing     | Jest, Supertest (e2e) |
 
 ### Infrastructure
@@ -128,6 +130,39 @@
 2. **Process** — Worker: read PDF → extract text → chunk (fixed size + overlap) → embed (stub or OpenAI) → insert into `document_chunks` (pgvector) → set document status DONE (or FAILED).
 3. **Chat** — Client `POST /documents/:id/chat/stream` with `{ question }` → backend: ownership + DONE check → embed query → similarity search (pgvector) → build RAG prompt → stream LLM tokens (Ollama) → SSE `delta` + `done` (with sources).
 
+### Data-flow diagram (end-to-end)
+
+```
+  User                    Frontend                    Backend                     Storage
+   │                         │                           │                            │
+   │  1. Upload PDF          │                           │                            │
+   │────────────────────────>│  POST /documents/upload    │                            │
+   │                         │──────────────────────────>│  Create Document (PENDING)  │
+   │                         │                           │  Write file → uploads/      │
+   │                         │                           │  Enqueue job ──────────────┼──> Redis (BullMQ)
+   │                         │<──────────────────────────│  Return document           │
+   │                         │                           │                            │
+   │                         │                     [Worker picks job]                   │
+   │                         │                           │  Read PDF, chunk, embed     │
+   │                         │                           │  INSERT document_chunks ───┼──> PostgreSQL (pgvector)
+   │                         │                           │  UPDATE document → DONE     │
+   │                         │                           │                            │
+   │  2. Poll status (every 2s until DONE)                │                            │
+   │                         │  GET /documents/:id       │                            │
+   │                         │──────────────────────────>│                            │
+   │                         │<──────────────────────────│  status, progress          │
+   │                         │                           │                            │
+   │  3. Ask question        │                           │                            │
+   │────────────────────────>│  POST .../chat/stream     │                            │
+   │                         │  { question }             │  Embed query               │
+   │                         │──────────────────────────>│  Similarity search ────────┼──> pgvector
+   │                         │                           │  Build prompt, stream LLM   │
+   │                         │  SSE: event: delta        │<──────────────────────────│  (Ollama/OpenAI)
+   │                         │<──────────────────────────│  event: done { sources }   │
+   │  Streamed answer        │                           │                            │
+   │<────────────────────────│                           │                            │
+```
+
 ### Backend module boundaries
 
 | Module     | Responsibility |
@@ -138,7 +173,6 @@
 | `embedding`| Single provider (stub or OpenAI); consistent dimension. |
 | `rag`     | Prompt building, LLM complete/stream (stub, Ollama, OpenAI). |
 | `jobs`    | BullMQ processor: PDF → text → chunk → embed → chunks. |
-| `events`  | Socket.IO gateway for document.created/updated/deleted (optional; frontend currently polls). |
 | `health`  | Public `GET /health` for connectivity checks. |
 
 ### Frontend structure
@@ -214,6 +248,29 @@ For a step-by-step checklist, see [docs/LOCAL-DEV-SANITY-CHECKLIST.md](docs/LOCA
 
 ---
 
+## Demo walkthrough
+
+Try DocuMind locally in under five minutes:
+
+1. **Start infrastructure** (from repo root): `docker compose up -d`. Wait until Postgres and Redis are healthy.
+2. **Backend**: `cd backend`, copy `.env.example` to `.env`, set `JWT_SECRET` (e.g. `openssl rand -base64 32`), `DATABASE_URL`, `REDIS_HOST`, `REDIS_PORT`, `CORS_ORIGIN=http://localhost:8080`. Run `npx prisma migrate deploy` then `npm run dev`. Backend should log “Application is running on: http://localhost:3000”.
+3. **Frontend**: From repo root, copy `.env.example` to `.env`, set `VITE_API_URL=http://localhost:3000`. Run `npm run dev`. Frontend runs at **http://localhost:8080**.
+4. **Open** http://localhost:8080. You should see the landing page with no “Backend unreachable” banner.
+5. **Register**: Click “Get Started” → create an account (name, email, password). You’re redirected to the Documents page.
+6. **Upload**: Drag and drop a PDF (or click to browse). The document appears with a progress bar. Wait until status is **Ready** (processing usually takes 30–90 seconds for a few pages).
+7. **Chat**: Click **Chat** on the document. Type a question (e.g. “What are the main points?”). Answers stream in and are grounded in your document; you can enable “Show sources under answers” in Settings.
+8. **Optional**: For local streaming, install [Ollama](https://ollama.ai/) and run `ollama pull qwen2.5:7b`. Set `LLM_PROVIDER=ollama`, `OLLAMA_BASE_URL=http://localhost:11434`, `OLLAMA_MODEL=qwen2.5:7b` in `backend/.env` and restart the backend. Without Ollama, the app uses a stub LLM (placeholder responses).
+
+---
+
+## Known limitations
+
+- **Local file storage** — PDFs are stored on disk (`uploads/`); no S3 or object storage yet.
+- **Polling for document status** — The frontend polls `GET /documents/:id` every 2s for in-progress docs; no WebSocket push.
+- **No refresh tokens** — JWT-only auth; tokens expire after 7 days (configurable). Re-login required after expiry.
+
+---
+
 ## Environment Variables
 
 ### Frontend (repo root `.env`)
@@ -269,7 +326,6 @@ insight-garden/
 │       ├── embedding/     # Stub / OpenAI
 │       ├── rag/            # Prompt, LLM (stub, Ollama, OpenAI)
 │       ├── jobs/           # BullMQ document processor (PDF → chunk → embed)
-│       ├── events/         # Socket.IO gateway (document events)
 │       ├── health/         # GET /health
 │       ├── common/          # @Public(), @CurrentUser(), HttpExceptionFilter
 │       ├── lib/             # chunking.ts

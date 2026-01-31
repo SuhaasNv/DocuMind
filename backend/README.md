@@ -23,9 +23,9 @@
 
 ## Description
 
-Backend for the Insight Garden RAG system: auth, document upload/lifecycle, and real-time document events via WebSocket. RAG and chat are not implemented yet (see TODO markers in code).
+Backend for the Insight Garden RAG system: auth, document upload/lifecycle, RAG (chunking, embedding, pgvector), BullMQ processing, and chat (including SSE streaming).
 
-**Stack:** NestJS, Prisma 7, PostgreSQL, Redis (BullMQ), JWT, WebSocket (Socket.IO).
+**Stack:** NestJS, Prisma 7, PostgreSQL (pgvector), Redis (BullMQ), JWT.
 
 ## Project setup
 
@@ -57,10 +57,7 @@ Then ensure Postgres is running: from repo root run `docker compose up -d`.
 **API base:** `http://localhost:3000` (or `PORT` from env).
 
 - **Auth:** `POST /auth/register`, `POST /auth/login` → `{ user, accessToken }`. Use `Authorization: Bearer <accessToken>` on protected routes.
-- **Documents:** `POST /documents/upload` (multipart `file`), `GET /documents`, `GET /documents/:id`, `DELETE /documents/:id`.
-- **WebSocket:** Connect to `http://localhost:3000/ws` with `?token=<accessToken>` or `auth: { token: accessToken }`. Events: `document.created`, `document.updated`, `document.deleted`.
-
-**TODO (not implemented):** RAG pipeline (chunking, embedding, vector store), document processing job consumer, chat/conversation API.
+- **Documents:** `POST /documents/upload` (multipart `file`), `GET /documents`, `GET /documents/:id`, `DELETE /documents/:id`, `POST /documents/:id/retry`, `GET /documents/:id/retrieval`, `POST /documents/:id/chat`, `POST /documents/:id/chat/stream` (SSE).
 
 ## NestJS project setup
 
