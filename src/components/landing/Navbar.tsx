@@ -44,7 +44,7 @@ const Navbar = () => {
           {/* Desktop Navigation Links */}
           <div className="hidden md:flex items-center gap-8">
             {NAV_LINKS.map(({ to, label }) => (
-              <Link key={to} to={to} className="text-sm text-muted-foreground hover:text-foreground transition-colors">
+              <Link key={to} to={to} className="text-sm text-white hover:text-primary transition-colors">
                 {label}
               </Link>
             ))}
