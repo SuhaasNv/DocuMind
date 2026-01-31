@@ -2,16 +2,39 @@
  * Single source of truth for backend API base URL.
  * All fetch/SSE calls must use getApiBaseUrl() so frontend–backend connectivity is consistent.
  *
- * For local dev: set VITE_API_URL in .env at the project root (e.g. VITE_API_URL=http://localhost:3000).
- * Vite only exposes env vars prefixed with VITE_. If unset, the app still loads and shows a banner.
+ * Sources (first wins): runtime config (from /runtime-config.json), then VITE_API_URL at build.
+ * Runtime config is written at build from VITE_API_URL so Vercel/production always get the right URL.
  */
 const env = (import.meta as unknown as { env: { VITE_API_URL?: string; VITE_APP_VERSION?: string; MODE?: string } }).env;
 
+let runtimeApiUrl: string | null = null;
+
+/** Set by ApiConfigProvider after loading /runtime-config.json. Overrides build-time env. */
+export function setRuntimeApiUrl(url: string | null): void {
+  runtimeApiUrl = url ? url.replace(/\/$/, '') : null;
+}
+
 /** Returns base URL or null if not set. Never throws so the app can always render. */
 export function getApiBaseUrl(): string | null {
+  if (runtimeApiUrl !== null && runtimeApiUrl !== '') return runtimeApiUrl;
   const url = env.VITE_API_URL;
   if (url === undefined || url === '') return null;
   return url.replace(/\/$/, ''); // strip trailing slash
+}
+
+/** Load /runtime-config.json and set runtime API URL. Resolves when done or after timeout. */
+export function initRuntimeConfig(): Promise<void> {
+  const timeoutMs = 2000;
+  return Promise.race([
+    fetch('/runtime-config.json')
+      .then((r) => (r.ok ? r.json() : Promise.reject(new Error('No runtime config'))))
+      .then((data: { apiUrl?: string }) => {
+        const url = typeof data?.apiUrl === 'string' ? data.apiUrl.trim() : '';
+        if (url) setRuntimeApiUrl(url);
+      })
+      .catch(() => {}),
+    new Promise<void>((r) => setTimeout(r, timeoutMs)),
+  ]);
 }
 
 /** Use when you need a URL and want to throw if missing (e.g. inside try/catch). */
