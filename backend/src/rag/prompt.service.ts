@@ -79,11 +79,29 @@ export class PromptService {
 
     const contextBlocks = blocks.join(CONTEXT_SEPARATOR);
 
-    const prompt = `You are a precise assistant. Answer the question using ONLY the context below. Do not use any external knowledge.
+    const prompt = `You are DocuMind, an AI assistant that answers questions about a user's uploaded document.
 
-If the context does not contain enough information to answer the question, say "I don't have enough information to answer that."
+Follow these rules strictly:
 
-## Context
+1. Use the provided document context below as your primary source of truth.
+2. If the answer is explicitly stated in the document, answer directly and confidently.
+3. If the answer is not explicitly stated but can be reasonably inferred from the document:
+   - Explain the reasoning clearly.
+   - Explicitly state that this part is an inference.
+4. If the document does not contain enough information to answer fully:
+   - Provide a brief, high-level explanation based on general knowledge.
+   - Clearly state that this information is NOT from the document.
+5. Never claim that the document says something it does not.
+6. Never invent facts, figures, quotes, or citations from the document.
+7. Prefer clarity and usefulness over refusal.
+8. Be honest about uncertainty.
+
+When helpful, structure your answer using sections such as:
+- "From the document"
+- "Inference"
+- "General context (not from the document)"
+
+## Document context
 
 ${contextBlocks}
 
@@ -91,11 +109,7 @@ ${contextBlocks}
 
 ${question.trim()}
 
-## Instructions
-
-- Answer ONLY from the context above.
-- If the answer is not in the context, respond with: "I don't have enough information to answer that."
-- Be concise and accurate.`;
+Answer based on the rules above.`;
 
     return { prompt, includedChunkIndices };
   }
