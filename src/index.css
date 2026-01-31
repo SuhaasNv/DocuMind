@@ -251,6 +251,25 @@
     animation: shimmer 2s ease-in-out infinite;
   }
 
+  /* Thinking indicator – ChatGPT-style shimmer bar */
+  @keyframes shimmer-thinking {
+    0% { background-position: -200% 0; }
+    100% { background-position: 200% 0; }
+  }
+
+  .shimmer-thinking-bar {
+    background: linear-gradient(
+      90deg,
+      hsl(var(--muted)) 15%,
+      hsl(var(--primary) / 0.4) 35%,
+      hsl(var(--muted-foreground) / 0.3) 50%,
+      hsl(var(--primary) / 0.35) 65%,
+      hsl(var(--muted)) 85%
+    );
+    background-size: 200% 100%;
+    animation: shimmer-thinking 1.8s ease-in-out infinite;
+  }
+
   /* Cursor blink – smooth opacity (no flash) */
   @keyframes cursor-blink {
     0%, 45% { opacity: 1; }

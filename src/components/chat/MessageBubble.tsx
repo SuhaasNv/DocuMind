@@ -1,10 +1,13 @@
-import { memo } from 'react';
+import { memo, useState, useEffect, useRef } from 'react';
 import { cn } from '@/lib/utils';
 import { Message } from '@/stores/useAppStore';
 import { usePreferencesStore } from '@/stores/usePreferencesStore';
 import { Bot, User } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import { motion } from 'framer-motion';
+
+const TYPING_MS_PER_CHAR = 22;
+const TYPING_CHARS_PER_TICK = 2;
 
 interface MessageBubbleProps {
   message: Message;
@@ -15,15 +18,71 @@ const MessageBubble = memo(function MessageBubble({ message }: MessageBubbleProp
   const showSourcesUnderAnswers = usePreferencesStore((s) => s.showSourcesUnderAnswers);
   const enableAnimations = usePreferencesStore((s) => s.enableAnimations);
 
+  const [visibleLength, setVisibleLength] = useState(0);
+  const typewriterIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const contentLengthRef = useRef(message.content.length);
+  const prevMessageIdRef = useRef(message.id);
+  contentLengthRef.current = message.content.length;
+
   const showSources = !isUser && showSourcesUnderAnswers && message.sources && message.sources.length > 0;
   const chunkIndices = showSources
     ? message.sources!.map((s) => s.chunkIndex).sort((a, b) => a - b)
     : [];
 
+  // Reset visible length when switching to a different message
+  useEffect(() => {
+    if (message.id !== prevMessageIdRef.current) {
+      prevMessageIdRef.current = message.id;
+      if (message.isStreaming) setVisibleLength(0);
+      else setVisibleLength(message.content.length);
+    }
+  }, [message.id, message.isStreaming, message.content.length]);
+
+  // When streaming ends, show full content immediately
+  useEffect(() => {
+    if (!message.isStreaming) {
+      if (typewriterIntervalRef.current) {
+        clearInterval(typewriterIntervalRef.current);
+        typewriterIntervalRef.current = null;
+      }
+      setVisibleLength(message.content.length);
+    }
+  }, [message.isStreaming, message.content.length]);
+
+  // Typewriter: animate visible length toward current content length while streaming
+  useEffect(() => {
+    if (isUser || !message.isStreaming) return;
+
+    const tick = () => {
+      setVisibleLength((prev) => {
+        const len = contentLengthRef.current;
+        const next = Math.min(prev + TYPING_CHARS_PER_TICK, len);
+        if (next >= len && typewriterIntervalRef.current) {
+          clearInterval(typewriterIntervalRef.current);
+          typewriterIntervalRef.current = null;
+        }
+        return next;
+      });
+    };
+
+    if (visibleLength < contentLengthRef.current) {
+      typewriterIntervalRef.current = setInterval(tick, TYPING_MS_PER_CHAR);
+    }
+
+    return () => {
+      if (typewriterIntervalRef.current) {
+        clearInterval(typewriterIntervalRef.current);
+        typewriterIntervalRef.current = null;
+      }
+    };
+  }, [isUser, message.isStreaming, message.content]);
+
   const Wrapper = enableAnimations ? motion.div : 'div';
   const wrapperProps = enableAnimations
     ? { initial: { opacity: 0, y: 10 }, animate: { opacity: 1, y: 0 }, transition: { duration: 0.3 } }
     : {};
+
+  const streamingText = message.isStreaming ? message.content.slice(0, visibleLength) : '';
 
   return (
     <Wrapper
@@ -53,10 +112,10 @@ const MessageBubble = memo(function MessageBubble({ message }: MessageBubbleProp
       >
         <div className="prose prose-invert prose-sm max-w-none">
           {message.isStreaming ? (
-            /* While streaming: render text + cursor inline so cursor stays at end of text */
-            <p className="mb-0 whitespace-pre-wrap break-words">
-              {message.content}
-              <span className="streaming-cursor" />
+            /* Typewriter: reveal text char-by-char with cursor following */
+            <p className="mb-0 whitespace-pre-wrap break-words inline">
+              {streamingText}
+              <span className="streaming-cursor" aria-hidden />
             </p>
           ) : (
             <ReactMarkdown
