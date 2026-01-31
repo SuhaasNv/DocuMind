@@ -1,5 +1,5 @@
 import { Link } from 'react-router-dom';
-import { FileText, Github, Twitter, Linkedin } from 'lucide-react';
+import { FileText, Github, Linkedin } from 'lucide-react';
 
 const Footer = () => {
   return (
@@ -16,16 +16,16 @@ const Footer = () => {
 
           {/* Links */}
           <nav className="flex items-center gap-8 text-sm text-muted-foreground">
-            <Link to="#" className="hover:text-foreground transition-colors">
+            <Link to="/privacy" className="hover:text-foreground transition-colors">
               Privacy
             </Link>
-            <Link to="#" className="hover:text-foreground transition-colors">
+            <Link to="/terms" className="hover:text-foreground transition-colors">
               Terms
             </Link>
-            <Link to="#" className="hover:text-foreground transition-colors">
+            <Link to="/docs" className="hover:text-foreground transition-colors">
               Documentation
             </Link>
-            <Link to="#" className="hover:text-foreground transition-colors">
+            <Link to="/contact" className="hover:text-foreground transition-colors">
               Contact
             </Link>
           </nav>
@@ -33,21 +33,18 @@ const Footer = () => {
           {/* Socials */}
           <div className="flex items-center gap-4">
             <a
-              href="#"
+              href="https://github.com/SuhaasNv"
+              target="_blank"
+              rel="noopener noreferrer"
               className="w-9 h-9 rounded-lg bg-secondary flex items-center justify-center hover:bg-secondary/80 transition-colors"
               aria-label="GitHub"
             >
               <Github className="w-4 h-4" />
             </a>
             <a
-              href="#"
-              className="w-9 h-9 rounded-lg bg-secondary flex items-center justify-center hover:bg-secondary/80 transition-colors"
-              aria-label="Twitter"
-            >
-              <Twitter className="w-4 h-4" />
-            </a>
-            <a
-              href="#"
+              href="https://www.linkedin.com/in/suhaasnv/"
+              target="_blank"
+              rel="noopener noreferrer"
               className="w-9 h-9 rounded-lg bg-secondary flex items-center justify-center hover:bg-secondary/80 transition-colors"
               aria-label="LinkedIn"
             >
