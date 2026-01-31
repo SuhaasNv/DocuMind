@@ -3,16 +3,22 @@
 import "dotenv/config";
 import { defineConfig } from "prisma/config";
 
-const databaseUrl = process.env["DATABASE_URL"];
-if (!databaseUrl) {
-  throw new Error(
-    "DATABASE_URL is not set. Copy backend/.env.example to backend/.env and set DATABASE_URL (e.g. postgresql://user:password@localhost:5432/insight_garden).",
-  );
+const databaseUrl =
+  process.env["DATABASE_URL"] ?? "postgresql://localhost:5432/insight_garden";
+if (!databaseUrl || databaseUrl === "postgresql://localhost:5432/insight_garden") {
+  if (process.env["DATABASE_URL"] === undefined) {
+    console.warn(
+      "[prisma] DATABASE_URL not set; using placeholder for generate/migrate config. Set DATABASE_URL for real DB connections.",
+    );
+  }
 }
-// Docker Compose Postgres is on port 5432. Wrong port (e.g. 51213) causes "Can't reach database server".
-if (!databaseUrl.includes(":5432/") && !databaseUrl.includes(":5432?")) {
-  console.error(
-    "Warning: DATABASE_URL should use port 5432 for docker-compose Postgres. Current value may use a different port.",
+if (
+  databaseUrl &&
+  !databaseUrl.includes(":5432/") &&
+  !databaseUrl.includes(":5432?")
+) {
+  console.warn(
+    "[prisma] DATABASE_URL may not use port 5432. For docker-compose Postgres use postgresql://...@localhost:5432/...",
   );
 }
 

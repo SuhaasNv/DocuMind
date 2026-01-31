@@ -2,5 +2,9 @@ node_modules
 # Keep environment variables out of version control
 .env
 
+# Prisma: use prisma.config.ts only (Prisma 7 parses .ts). Avoid committing .js so deploy (e.g. Railway) uses .ts.
+prisma.config.js
+prisma.config.js.map
+
 /generated/prisma
 uploads/
