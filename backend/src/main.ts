@@ -34,16 +34,17 @@ async function bootstrap() {
     }),
   );
 
-  // CORS: allow frontend (http://localhost:8080) with credentials for auth/SSE.
-  // Default to http://localhost:8080 so local dev works without setting CORS_ORIGIN in .env.
-  const corsOrigin = process.env.CORS_ORIGIN ?? 'http://localhost:8080';
+  // CORS: allow frontend with credentials for auth/SSE.
+  // CORS_ORIGIN can be a single origin or comma-separated list (e.g. "https://app.railway.app,http://localhost:8080").
+  const corsOriginEnv = process.env.CORS_ORIGIN ?? 'http://localhost:8080';
+  const corsOrigins = corsOriginEnv.split(',').map((o) => o.trim()).filter(Boolean);
   app.enableCors({
-    origin: corsOrigin,
+    origin: corsOrigins.length > 0 ? corsOrigins : ['http://localhost:8080'],
     credentials: true,
     methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
     allowedHeaders: ['Content-Type', 'Authorization'],
   });
-  console.log('[CORS] Allowed origin:', corsOrigin);
+  console.log('[CORS] Allowed origins:', corsOrigins);
 
   app.enableShutdownHooks();
 
