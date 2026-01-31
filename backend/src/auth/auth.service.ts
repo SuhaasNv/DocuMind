@@ -66,19 +66,32 @@ export class AuthService {
   }
 
   async login(dto: LoginDto): Promise<AuthResponse> {
-    const user = await this.prisma.user.findUnique({
-      where: { email: dto.email.toLowerCase() },
-    });
-    if (!user) {
-      throw new UnauthorizedException('Invalid email or password');
-    }
+    try {
+      const user = await this.prisma.user.findUnique({
+        where: { email: dto.email.toLowerCase() },
+      });
+      if (!user) {
+        throw new UnauthorizedException('Invalid email or password');
+      }
 
-    const valid = await bcrypt.compare(dto.password, user.passwordHash);
-    if (!valid) {
-      throw new UnauthorizedException('Invalid email or password');
-    }
+      const valid = await bcrypt.compare(dto.password, user.passwordHash);
+      if (!valid) {
+        throw new UnauthorizedException('Invalid email or password');
+      }
 
-    return this.buildAuthResponse(user);
+      return this.buildAuthResponse(user);
+    } catch (err) {
+      if (err instanceof UnauthorizedException) throw err;
+      if (
+        err instanceof Prisma.PrismaClientKnownRequestError ||
+        err instanceof Prisma.PrismaClientInitializationError
+      ) {
+        throw new ServiceUnavailableException(
+          'Database error. Run migrations: npx prisma migrate deploy (in backend/)',
+        );
+      }
+      throw err;
+    }
   }
 
   async validateUser(payload: JwtPayload): Promise<AuthUser | null> {
