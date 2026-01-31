@@ -8,6 +8,8 @@
 [![PostgreSQL](https://img.shields.io/badge/PostgreSQL-pgvector-4169E1?logo=postgresql)](https://www.postgresql.org/)
 [![Redis](https://img.shields.io/badge/Redis-7-DC382D?logo=redis)](https://redis.io/)
 
+**Production stack:** Frontend → [Vercel](https://vercel.com/) · Backend → [Railway](https://railway.app/) · Database → [Supabase](https://supabase.com/) · Redis → [Upstash](https://upstash.com/)
+
 ---
 
 ## Table of Contents
@@ -17,6 +19,7 @@
 - [Architecture](#architecture)
 - [Prerequisites](#prerequisites)
 - [Quick Start](#quick-start)
+- [Deployment (Production)](#deployment-production)
 - [Demo Walkthrough](#demo-walkthrough)
 - [Known Limitations](#known-limitations)
 - [Environment Variables](#environment-variables)
@@ -80,13 +83,15 @@
 
 ### Infrastructure
 
-| Component   | Technology |
-|------------|------------|
-| Database   | PostgreSQL 16 + pgvector (Docker **local only**; production uses managed Postgres) |
-| Cache/Queue| Redis 7 (Docker **local only**; production uses managed Redis) |
-| App hosts  | Backend and frontend run on the **host** (not in Docker); only Postgres and Redis are containerized locally |
+| Component     | Local development              | Production (recommended)                    |
+|---------------|--------------------------------|---------------------------------------------|
+| **Frontend**  | Vite dev server (host)         | [Vercel](https://vercel.com/)               |
+| **Backend**   | NestJS on host                 | [Railway](https://railway.app/)             |
+| **Database**  | PostgreSQL 16 + pgvector (Docker) | [Supabase](https://supabase.com/) (PostgreSQL + pgvector) |
+| **Cache/Queue** | Redis 7 (Docker)             | [Upstash](https://upstash.com/) (Redis)     |
 
-**Local vs production:** Docker (this repo’s `docker-compose`) is for **local development only**. In production, use managed Postgres and Redis (e.g. Neon, RDS, Upstash, ElastiCache); backend and frontend are deployed to your chosen app hosts without Docker.
+**Local:** Docker (`docker-compose`) runs Postgres and Redis only; backend and frontend run on the host.  
+**Production:** Frontend on Vercel, backend on Railway, database on Supabase, Redis (BullMQ) on Upstash. No Docker in production.
 
 ---
 
@@ -125,6 +130,8 @@
 │ + pgvector      │            │ (BullMQ)        │
 └─────────────────┘            └─────────────────┘
 ```
+
+**Production:** Same flow; frontend on Vercel, backend on Railway, PostgreSQL on Supabase (pgvector), Redis on Upstash.
 
 ### Data flow (simplified)
 
@@ -220,7 +227,8 @@ docker compose up -d
 ```bash
 cd backend
 cp .env.example .env
-# Edit .env: set JWT_SECRET (e.g. openssl rand -base64 32), DATABASE_URL, REDIS_HOST, REDIS_PORT, CORS_ORIGIN.
+# Edit .env: set JWT_SECRET (e.g. openssl rand -base64 32), DATABASE_URL (local Postgres or Supabase with ?sslmode=require),
+# and Redis: either REDIS_HOST=localhost, REDIS_PORT=6379 (Docker) or REDIS_URL (Upstash rediss://...).
 npx prisma migrate deploy
 npm run dev
 ```
@@ -247,6 +255,69 @@ Frontend runs at **http://localhost:8080**.
 4. Wait for processing (progress bar); when status is “Ready”, open the document chat and ask questions.
 
 For a step-by-step checklist, see [docs/LOCAL-DEV-SANITY-CHECKLIST.md](docs/LOCAL-DEV-SANITY-CHECKLIST.md).
+
+---
+
+## Deployment (Production)
+
+Production setup: **Frontend** on Vercel, **Backend** on Railway, **Database** on Supabase, **Redis** on Upstash.
+
+### 1. Database — Supabase
+
+1. Create a project at [Supabase](https://supabase.com/).
+2. **Settings** → **Database** → copy the **connection string** (URI). Replace `[YOUR-PASSWORD]` with your database password.
+3. Add `?sslmode=require` at the end (e.g. `postgresql://postgres:PASSWORD@db.xxx.supabase.co:5432/postgres?sslmode=require`).
+4. Run migrations against this DB (from your machine with `DATABASE_URL` in `backend/.env` pointing to Supabase):
+   ```bash
+   cd backend
+   npx prisma migrate deploy
+   ```
+
+### 2. Redis — Upstash
+
+1. Create a Redis database at [Upstash](https://upstash.com/).
+2. In the Upstash dashboard, open your Redis database. Under **Redis Connect** / **Endpoint**, copy the **Redis URL** (TCP), e.g. `rediss://default:PASSWORD@xxx.upstash.io:6379`.
+
+### 3. Backend — Railway
+
+1. Create a project at [Railway](https://railway.app/) and add a **service** from your repo (backend: e.g. root or `backend/` with build command and start command).
+2. In the backend service → **Variables**, set:
+
+   | Variable        | Description |
+   |-----------------|-------------|
+   | `DATABASE_URL`  | Supabase connection string with `?sslmode=require`. |
+   | `JWT_SECRET`    | Long random string (e.g. `openssl rand -base64 32`). |
+   | `CORS_ORIGIN`   | Your frontend origin (e.g. `https://your-app.vercel.app`). |
+   | `REDIS_URL`     | Upstash Redis URL (`rediss://default:...@...upstash.io:6379`). |
+   | `GEMINI_API_KEY`| (Optional) For RAG/chat if using Gemini. |
+
+3. **Settings** → **Networking** → **Generate Domain** so the backend has a public URL (e.g. `https://your-backend.up.railway.app`).
+4. Deploy. Check logs for “Application is running” and no `[FATAL]` env errors.
+
+### 4. Frontend — Vercel
+
+1. Import your repo at [Vercel](https://vercel.com/) and configure the frontend (root or `./` with build command `npm run build`, output directory `dist`).
+2. **Settings** → **Environment Variables** → add:
+
+   | Variable         | Value |
+   |------------------|--------|
+   | `VITE_API_URL`   | Your Railway backend URL (e.g. `https://your-backend.up.railway.app`). No trailing slash. |
+
+3. **Redeploy** the frontend so the build picks up `VITE_API_URL` (Vite bakes it at build time; we also write it to `/runtime-config.json` for production).
+
+### 5. Verify
+
+- Open your Vercel URL. You should see no “Backend unreachable” banner.
+- Register / log in (auth hits Railway → Supabase).
+- Upload a PDF. Document should move from Pending → Processing → Ready (BullMQ + Upstash Redis).
+- Chat with the document (requires LLM config, e.g. `GEMINI_API_KEY` on Railway if using Gemini).
+
+### Production env summary
+
+| Where     | Key variables |
+|----------|----------------|
+| **Railway (backend)** | `DATABASE_URL`, `JWT_SECRET`, `CORS_ORIGIN`, `REDIS_URL`, optional `GEMINI_API_KEY` |
+| **Vercel (frontend)** | `VITE_API_URL` = Railway backend URL |
 
 ---
 
@@ -277,30 +348,31 @@ Try DocuMind locally in under five minutes:
 
 ### Frontend (repo root `.env`)
 
-| Variable        | Required | Description |
-|----------------|----------|-------------|
-| `VITE_API_URL` | Yes      | Backend API base URL (e.g. `http://localhost:3000`). No trailing slash. |
-| `VITE_APP_VERSION` | No   | App version string (default `0.0.0`). |
+| Variable          | Required | Description |
+|-------------------|----------|-------------|
+| `VITE_API_URL`    | Yes      | Backend API base URL (e.g. `http://localhost:3000` locally; production: your Railway backend URL). No trailing slash. |
+| `VITE_APP_VERSION`| No       | App version string (default `0.0.0`). |
 
-Vite only exposes variables prefixed with `VITE_`. Restart the dev server after changing `.env`.
+Vite only exposes variables prefixed with `VITE_`. Restart the dev server after changing `.env`. **Production (Vercel):** set `VITE_API_URL` in project Environment Variables and redeploy so the build picks it up.
 
 ### Backend (`backend/.env`)
 
 | Variable              | Required | Description |
 |-----------------------|----------|-------------|
-| `DATABASE_URL`        | Yes      | PostgreSQL connection string (e.g. `postgresql://user:password@localhost:5432/insight_garden`). |
+| `DATABASE_URL`        | Yes      | PostgreSQL connection string. Local: `postgresql://user:password@localhost:5432/insight_garden`. **Supabase:** use URI from Dashboard → Settings → Database; add `?sslmode=require`; replace `[YOUR-PASSWORD]` with DB password. |
 | `JWT_SECRET`          | Yes      | Long random string for signing JWTs (e.g. `openssl rand -base64 32`). Must not be the literal `change-me-in-production`. |
-| `REDIS_HOST`          | Yes      | Redis host (e.g. `localhost` when using Docker). |
-| `REDIS_PORT`          | Yes      | Redis port (e.g. `6379`). |
-| `PORT`                | No       | HTTP port (default `3000`). |
-| `CORS_ORIGIN`         | No       | Allowed origin for CORS (default `http://localhost:8080`). |
-| `JWT_EXPIRES_IN`      | No       | Token expiry in seconds (default `604800` = 7 days). |
-| `EMBEDDING_PROVIDER`  | No       | `stub` or `openai`. |
+| `REDIS_HOST` / `REDIS_PORT` | Yes (or `REDIS_URL`) | Redis for BullMQ. Local: `localhost`, `6379`. **Upstash:** use `REDIS_URL` = full TCP URL (`rediss://default:PASSWORD@xxx.upstash.io:6379`) from Upstash dashboard (Redis Connect). |
+| `REDIS_URL`           | No (alternative) | Full Redis URL; overrides host/port/password. Use for Upstash: `rediss://default:...@...upstash.io:6379`. TLS is auto-enabled for `*.upstash.io`. |
+| `PORT`                | No       | HTTP port (default `3000`). Railway sets this automatically. |
+| `CORS_ORIGIN`         | No       | Allowed origin(s) for CORS; comma-separated for multiple. Default `http://localhost:8080`. Production: your Vercel origin (e.g. `https://your-app.vercel.app`). `*.vercel.app` and `*.railway.app` are also allowed in code. |
+| `JWT_EXPIRES_IN`     | No       | Token expiry in seconds (default `604800` = 7 days). |
+| `EMBEDDING_PROVIDER` | No       | `stub` or `openai`. |
 | `EMBEDDING_DIMENSION`| No       | Vector dimension (default `1536`; must match migration). |
-| `OPENAI_API_KEY`      | If OpenAI | For embeddings/LLM when using OpenAI. |
-| `LLM_PROVIDER`        | No       | `stub`, `ollama`, or `openai`. |
-| `OLLAMA_BASE_URL`     | No       | Ollama API URL (default `http://localhost:11434`). |
-| `OLLAMA_MODEL`        | No       | Model name (e.g. `qwen2.5:7b`). |
+| `OPENAI_API_KEY`     | If OpenAI | For embeddings/LLM when using OpenAI. |
+| `LLM_PROVIDER`       | No       | `stub`, `ollama`, `openai`, or `gemini`. |
+| `GEMINI_API_KEY`     | If Gemini | For RAG/chat when `LLM_PROVIDER=gemini`. |
+| `OLLAMA_BASE_URL`    | No       | Ollama API URL (default `http://localhost:11434`). |
+| `OLLAMA_MODEL`       | No       | Model name (e.g. `qwen2.5:7b`). |
 
 See `backend/.env.example` for full comments and optional RAG/embedding/LLM variables.
 
@@ -372,6 +444,7 @@ insight-garden/
 
 | Document | Description |
 |----------|-------------|
+| [docs/CASE-STUDY-DEPLOYMENT.md](docs/CASE-STUDY-DEPLOYMENT.md) | **Deployment case study:** Full production rollout with Vercel, Railway, Supabase, Upstash—issues, fixes, URLs, env vars, and lessons. |
 | [docs/LOCAL-DEV-SANITY-CHECKLIST.md](docs/LOCAL-DEV-SANITY-CHECKLIST.md) | Step-by-step local dev verification (env, Docker, auth, CORS, errors). |
 | [docs/INCIDENT-AUTH-SSE-FIX.md](docs/INCIDENT-AUTH-SSE-FIX.md) | Post-mortem and fix plan for auth/SSE/env (rehydration, CORS, JWT). |
 | [docs/TECHNICAL-AUDIT.md](docs/TECHNICAL-AUDIT.md) | Full technical audit: architecture, auth, data flow, streaming, state, UX, DX; P0/P1/P2 and next steps. |
