@@ -134,6 +134,15 @@
     background: var(--gradient-hero);
   }
 
+  /* Tablet landscape (e.g. Samsung Tab S9): stabilize hero to reduce flicker */
+  @media (orientation: landscape) and (max-width: 1280px) {
+    .hero-section {
+      contain: layout paint;
+      min-height: 100vh;
+      min-height: 100dvh;
+    }
+  }
+
   /* Animated gradient border */
   .gradient-border {
     @apply relative;

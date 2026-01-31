@@ -26,7 +26,7 @@ const Hero = () => {
   const reduceMotion = useReducedMotion();
 
   return (
-    <section className="relative min-h-screen min-h-[100dvh] flex flex-col items-center justify-start sm:justify-center overflow-hidden pt-safe pb-[max(5rem,calc(4rem+env(safe-area-inset-bottom,0px)))] sm:pt-0 sm:pb-0">
+    <section className="hero-section relative min-h-screen min-h-[100dvh] flex flex-col items-center justify-start sm:justify-center overflow-hidden pt-safe pb-[max(5rem,calc(4rem+env(safe-area-inset-bottom,0px)))] sm:pt-0 sm:pb-0">
       {/* Animated bubble background – simplified on tablet/mobile to avoid glitching */}
       <BubbleBackground className="absolute inset-0" interactive={!reduceMotion} reduceMotion={reduceMotion} />
 
