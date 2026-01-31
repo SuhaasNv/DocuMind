@@ -13,7 +13,10 @@ export class EmbeddingService {
   private readonly provider: string;
 
   constructor(private readonly config: ConfigService) {
-    this.dimension = this.config.get<number>('EMBEDDING_DIMENSION', EMBEDDING_DIMENSION_DEFAULT);
+    this.dimension = this.config.get<number>(
+      'EMBEDDING_DIMENSION',
+      EMBEDDING_DIMENSION_DEFAULT,
+    );
     this.provider = this.config.get<string>('EMBEDDING_PROVIDER', 'stub');
   }
 
@@ -62,9 +65,14 @@ export class EmbeddingService {
   private async embedOpenAI(text: string): Promise<number[]> {
     const apiKey = this.config.get<string>('OPENAI_API_KEY');
     if (!apiKey) {
-      throw new Error('OPENAI_API_KEY is required when EMBEDDING_PROVIDER=openai');
+      throw new Error(
+        'OPENAI_API_KEY is required when EMBEDDING_PROVIDER=openai',
+      );
     }
-    const model = this.config.get<string>('OPENAI_EMBEDDING_MODEL', 'text-embedding-3-small');
+    const model = this.config.get<string>(
+      'OPENAI_EMBEDDING_MODEL',
+      'text-embedding-3-small',
+    );
     const res = await fetch('https://api.openai.com/v1/embeddings', {
       method: 'POST',
       headers: {
@@ -77,7 +85,9 @@ export class EmbeddingService {
       const err = await res.text();
       throw new Error(`OpenAI embedding failed: ${res.status} ${err}`);
     }
-    const data = (await res.json()) as { data?: Array<{ embedding?: number[] }> };
+    const data = (await res.json()) as {
+      data?: Array<{ embedding?: number[] }>;
+    };
     const embedding = data?.data?.[0]?.embedding;
     if (!embedding || embedding.length !== this.dimension) {
       throw new Error(

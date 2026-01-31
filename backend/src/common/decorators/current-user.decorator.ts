@@ -7,7 +7,10 @@ export interface JwtPayload {
 }
 
 export const CurrentUser = createParamDecorator(
-  (data: keyof JwtPayload | undefined, ctx: ExecutionContext): JwtPayload | string | undefined => {
+  (
+    data: keyof JwtPayload | undefined,
+    ctx: ExecutionContext,
+  ): JwtPayload | string | undefined => {
     const request = ctx.switchToHttp().getRequest();
     const user = request.user as JwtPayload | undefined;
     if (data && user) return user[data] as string;

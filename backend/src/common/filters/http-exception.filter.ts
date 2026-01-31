@@ -33,9 +33,12 @@ export class HttpExceptionFilter implements ExceptionFilter {
         ? (exception.getResponse() as string | { message?: string | string[] })
         : 'Internal server error';
 
-    const resolvedMessage = typeof message === 'object' && message?.message
-      ? (Array.isArray(message.message) ? message.message[0] : message.message)
-      : String(message);
+    const resolvedMessage =
+      typeof message === 'object' && message?.message
+        ? Array.isArray(message.message)
+          ? message.message[0]
+          : message.message
+        : String(message);
 
     const errorBody: ErrorResponse = {
       statusCode: status,

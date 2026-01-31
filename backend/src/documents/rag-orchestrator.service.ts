@@ -3,15 +3,18 @@ import { RetrievalService } from './retrieval.service.js';
 import { PromptService } from '../rag/prompt.service.js';
 import { LlmService } from '../rag/llm.service.js';
 import { logRagLatency } from '../rag/rag-latency.logger.js';
-import type { ChatResponseDto, ChatSourceDto } from './dto/chat-response.dto.js';
+import type {
+  ChatResponseDto,
+  ChatSourceDto,
+} from './dto/chat-response.dto.js';
 
 const NO_INFO_ANSWER = "I don't have enough information to answer that.";
 /** When retrieval returns no chunks (document not indexed or no rows). */
 const NO_CHUNKS_ANSWER =
-  "No content was found for this document. It may still be processing (ensure Redis is running), or the file may have no extractable text. Try again in a moment or re-upload a PDF with selectable text.";
+  'No content was found for this document. It may still be processing (ensure Redis is running), or the file may have no extractable text. Try again in a moment or re-upload a PDF with selectable text.';
 /** When all retrieved chunks are empty (e.g. image-only PDF). */
 const NO_EXTRACTABLE_TEXT_ANSWER =
-  "This document has no extractable text (e.g. image-only or scanned PDF). Try uploading a PDF with selectable text.";
+  'This document has no extractable text (e.g. image-only or scanned PDF). Try uploading a PDF with selectable text.';
 const DEFAULT_TOP_K = 4;
 
 export interface RagChatInput {
@@ -70,7 +73,11 @@ export class RagOrchestratorService {
 
     const t0Prompt = performance.now();
     const { prompt, includedChunkIndices } = this.promptService.buildRagPrompt(
-      chunks.map((c) => ({ content: c.content, chunkIndex: c.chunkIndex, score: c.score })),
+      chunks.map((c) => ({
+        content: c.content,
+        chunkIndex: c.chunkIndex,
+        score: c.score,
+      })),
       trimmedQuestion,
     );
     const promptBuildMs = performance.now() - t0Prompt;
@@ -131,7 +138,11 @@ export class RagOrchestratorService {
 
     const t0Prompt = performance.now();
     const { prompt, includedChunkIndices } = this.promptService.buildRagPrompt(
-      chunks.map((c) => ({ content: c.content, chunkIndex: c.chunkIndex, score: c.score })),
+      chunks.map((c) => ({
+        content: c.content,
+        chunkIndex: c.chunkIndex,
+        score: c.score,
+      })),
       trimmedQuestion,
     );
     const promptBuildMs = performance.now() - t0Prompt;

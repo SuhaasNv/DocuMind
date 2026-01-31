@@ -44,7 +44,9 @@ export class DocumentProcessor extends WorkerHost {
       return;
     }
     if (document.userId !== userId) {
-      this.logger.warn(`Document ${documentId} not owned by user ${userId}, skipping job`);
+      this.logger.warn(
+        `Document ${documentId} not owned by user ${userId}, skipping job`,
+      );
       return;
     }
 
@@ -92,9 +94,16 @@ export class DocumentProcessor extends WorkerHost {
         const progress = Math.min(
           PROGRESS_EMBEDDING_END,
           PROGRESS_EMBEDDING_START +
-            Math.round(((i + 1) / totalChunks) * (PROGRESS_EMBEDDING_END - PROGRESS_EMBEDDING_START)),
+            Math.round(
+              ((i + 1) / totalChunks) *
+                (PROGRESS_EMBEDDING_END - PROGRESS_EMBEDDING_START),
+            ),
         );
-        const okProgress = await this.updateProgress(documentId, document.userId, { progress });
+        const okProgress = await this.updateProgress(
+          documentId,
+          document.userId,
+          { progress },
+        );
         if (!okProgress) return;
       }
 
@@ -102,16 +111,24 @@ export class DocumentProcessor extends WorkerHost {
         status: DocumentStatus.DONE,
         progress: 100,
       });
-      this.logger.log(`Document ${documentId} processed successfully (${totalChunks} chunks)`);
+      this.logger.log(
+        `Document ${documentId} processed successfully (${totalChunks} chunks)`,
+      );
     } catch (err) {
       this.logger.error(`Document ${documentId} processing failed:`, err);
       try {
-        const deleted = await this.documentChunkService.deleteByDocumentId(documentId);
+        const deleted =
+          await this.documentChunkService.deleteByDocumentId(documentId);
         if (deleted > 0) {
-          this.logger.log(`Deleted ${deleted} partial chunks for document ${documentId}`);
+          this.logger.log(
+            `Deleted ${deleted} partial chunks for document ${documentId}`,
+          );
         }
       } catch (cleanupErr) {
-        this.logger.warn(`Cleanup of chunks for ${documentId} failed:`, cleanupErr);
+        this.logger.warn(
+          `Cleanup of chunks for ${documentId} failed:`,
+          cleanupErr,
+        );
       }
       await this.setFailed(
         documentId,
@@ -135,7 +152,9 @@ export class DocumentProcessor extends WorkerHost {
     } catch (e: unknown) {
       const code = (e as { code?: string })?.code;
       if (code === 'P2025') {
-        this.logger.warn(`Document ${documentId} no longer exists (deleted?), exiting`);
+        this.logger.warn(
+          `Document ${documentId} no longer exists (deleted?), exiting`,
+        );
         return false;
       }
       throw e;

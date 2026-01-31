@@ -27,7 +27,10 @@ export function chunkText(
   options: ChunkingOptions = {},
 ): TextChunk[] {
   const chunkSize = Math.max(1, options.chunkSize ?? DEFAULT_CHUNK_SIZE);
-  const overlap = Math.max(0, Math.min(options.overlap ?? DEFAULT_OVERLAP, chunkSize - 1));
+  const overlap = Math.max(
+    0,
+    Math.min(options.overlap ?? DEFAULT_OVERLAP, chunkSize - 1),
+  );
   const step = chunkSize - overlap;
 
   if (!text || text.length === 0) {

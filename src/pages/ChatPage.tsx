@@ -13,7 +13,6 @@ import { usePreferencesStore } from '@/stores/usePreferencesStore';
 import { streamChat } from '@/lib/sseChat';
 import { getApiBaseUrl } from '@/lib/api';
 
-const THROTTLE_MS = 40;
 const SCROLL_THRESHOLD_PX = 120;
 const SSE_TIMEOUT_MS = 90000;
 
@@ -44,7 +43,14 @@ const ChatPage = () => {
   const isStreaming = messages.some((m) => m.isStreaming);
 
   const scrollToBottom = useCallback((behavior: ScrollBehavior = 'smooth') => {
-    messagesEndRef.current?.scrollIntoView({ behavior });
+    const container = scrollContainerRef.current;
+    if (container) {
+      if (behavior === 'instant') {
+        container.scrollTop = container.scrollHeight;
+      } else {
+        messagesEndRef.current?.scrollIntoView({ behavior });
+      }
+    }
   }, []);
 
   const isNearBottom = useCallback(() => {
@@ -80,10 +86,11 @@ const ChatPage = () => {
     };
   }, [documentId, setAbortActiveSSE]);
 
+  // Auto-scroll to bottom while streaming when preference is on (always follow new content).
   useEffect(() => {
     if (!isStreaming || !autoScrollWhileStreaming) return;
-    if (isNearBottom()) scrollToBottom();
-  }, [messages, isStreaming, autoScrollWhileStreaming, isNearBottom, scrollToBottom]);
+    scrollToBottom('instant');
+  }, [messages, isStreaming, autoScrollWhileStreaming, scrollToBottom]);
 
   const handleSendMessage = useCallback(
     async (content: string) => {
@@ -129,25 +136,12 @@ const ChatPage = () => {
       };
       addMessage(documentId, assistantMessage);
 
-      let buffer = '';
       let fullContent = '';
-      let throttleTimer: ReturnType<typeof setTimeout> | null = null;
 
-      const flush = () => {
+      const appendContent = (chunk: string) => {
         if (!isMountedRef.current || signal.aborted || currentDocumentId !== documentId) return;
-        if (buffer === '') {
-          throttleTimer = null;
-          return;
-        }
-        fullContent += buffer;
-        buffer = '';
-        throttleTimer = null;
+        fullContent += chunk;
         updateMessage(currentDocumentId, assistantId, fullContent);
-      };
-
-      const scheduleFlush = () => {
-        if (throttleTimer !== null) return;
-        throttleTimer = setTimeout(flush, THROTTLE_MS);
       };
 
       const clearStreamTimeout = () => {
@@ -171,16 +165,10 @@ const ChatPage = () => {
         {
           onDelta: (chunk) => {
             if (signal.aborted || !isMountedRef.current) return;
-            buffer += chunk;
-            scheduleFlush();
+            appendContent(chunk);
           },
           onDone: (sources) => {
             clearStreamTimeout();
-            if (throttleTimer !== null) {
-              clearTimeout(throttleTimer);
-              throttleTimer = null;
-            }
-            flush();
             if (!isMountedRef.current || signal.aborted) return;
             if (currentDocumentId !== documentId) return;
             setStreaming(documentId, assistantId, false);
@@ -188,10 +176,6 @@ const ChatPage = () => {
           },
           onError: (message) => {
             clearStreamTimeout();
-            if (throttleTimer !== null) {
-              clearTimeout(throttleTimer);
-              throttleTimer = null;
-            }
             if (!isMountedRef.current || signal.aborted) return;
             if (currentDocumentId !== documentId) return;
             updateMessage(documentId, assistantId, `Sorry, something went wrong: ${message}`);
@@ -205,7 +189,6 @@ const ChatPage = () => {
         }
       );
 
-      if (throttleTimer !== null) clearTimeout(throttleTimer);
     },
     [
       documentId,

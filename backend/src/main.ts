@@ -50,7 +50,9 @@ async function bootstrap() {
   const port = process.env.PORT ?? 3000;
   await app.listen(port);
   console.log(`Application is running on: http://localhost:${port}`);
-  console.log('[API] GET /health (connectivity check), POST /auth/register, POST /auth/login');
+  console.log(
+    '[API] GET /health (connectivity check), POST /auth/register, POST /auth/login',
+  );
 }
 
 // Fail loudly on DB/startup errors: log and exit with code 1 (no silent catch).

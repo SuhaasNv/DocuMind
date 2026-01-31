@@ -1,13 +1,14 @@
 import { Injectable, NotImplementedException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
+import { GeminiClient } from './gemini.client.js';
 
 export const LLM_PROVIDER_DEFAULT = 'stub';
 
 /**
- * Configurable LLM service: stub, ollama, or openai.
+ * Configurable LLM service: stub, ollama, openai, or gemini.
  * - complete(prompt): full response (no streaming).
  * - stream(prompt, signal): async generator of text tokens; supports abort via signal.
- * Ollama supports streaming; OpenAI streaming not implemented (throws NotImplementedException).
+ * Ollama and Gemini support streaming; OpenAI streaming not implemented (throws NotImplementedException).
  */
 @Injectable()
 export class LlmService {
@@ -16,11 +17,23 @@ export class LlmService {
   private readonly ollamaModel: string;
   private readonly openaiModel: string;
 
-  constructor(private readonly config: ConfigService) {
-    this.provider = this.config.get<string>('LLM_PROVIDER', LLM_PROVIDER_DEFAULT);
-    this.ollamaBaseUrl = this.config.get<string>('OLLAMA_BASE_URL', 'http://localhost:11434');
+  constructor(
+    private readonly config: ConfigService,
+    private readonly geminiClient: GeminiClient,
+  ) {
+    this.provider = this.config.get<string>(
+      'LLM_PROVIDER',
+      LLM_PROVIDER_DEFAULT,
+    );
+    this.ollamaBaseUrl = this.config.get<string>(
+      'OLLAMA_BASE_URL',
+      'http://localhost:11434',
+    );
     this.ollamaModel = this.config.get<string>('OLLAMA_MODEL', 'llama3.2');
-    this.openaiModel = this.config.get<string>('OPENAI_CHAT_MODEL', 'gpt-4o-mini');
+    this.openaiModel = this.config.get<string>(
+      'OPENAI_CHAT_MODEL',
+      'gpt-4o-mini',
+    );
   }
 
   /**
@@ -38,6 +51,9 @@ export class LlmService {
       case 'ollama':
         yield* this.streamOllama(prompt, signal);
         return;
+      case 'gemini':
+        yield* this.geminiClient.stream(prompt, signal);
+        return;
       case 'openai':
         throw new NotImplementedException(
           'OpenAI streaming is not implemented. Use LLM_PROVIDER=ollama for streaming, or POST /documents/:id/chat for non-streaming.',
@@ -54,6 +70,8 @@ export class LlmService {
     switch (this.provider) {
       case 'ollama':
         return this.completeOllama(prompt);
+      case 'gemini':
+        return this.completeGemini(prompt);
       case 'openai':
         return this.completeOpenAI(prompt);
       default:
@@ -97,6 +115,13 @@ export class LlmService {
   }
 
   /**
+   * Gemini: generateContent (no streaming).
+   */
+  private async completeGemini(prompt: string): Promise<string> {
+    return this.geminiClient.complete(prompt);
+  }
+
+  /**
    * OpenAI: chat completions (no streaming).
    */
   private async completeOpenAI(prompt: string): Promise<string> {
@@ -120,7 +145,9 @@ export class LlmService {
       const err = await res.text();
       throw new Error(`OpenAI request failed: ${res.status} ${err}`);
     }
-    const data = (await res.json()) as { choices?: Array<{ message?: { content?: string } }> };
+    const data = (await res.json()) as {
+      choices?: Array<{ message?: { content?: string } }>;
+    };
     const content = data?.choices?.[0]?.message?.content;
     if (typeof content !== 'string') {
       throw new Error('OpenAI returned invalid response');
@@ -131,7 +158,9 @@ export class LlmService {
   /**
    * Stub streaming: yields a placeholder message token by token (word by word).
    */
-  private async *streamStub(_prompt: string): AsyncGenerator<string, void, undefined> {
+  private async *streamStub(
+    _prompt: string,
+  ): AsyncGenerator<string, void, undefined> {
     const message =
       'This is a stub stream. Set LLM_PROVIDER=ollama and configure OLLAMA_BASE_URL and OLLAMA_MODEL for real streaming.';
     for (const word of message.split(/\s+/)) {
@@ -185,7 +214,10 @@ export class LlmService {
         for (const line of lines) {
           const trimmed = line.trim();
           if (!trimmed) continue;
-          const data = JSON.parse(trimmed) as { response?: string; done?: boolean };
+          const data = JSON.parse(trimmed) as {
+            response?: string;
+            done?: boolean;
+          };
           if (data.response && typeof data.response === 'string') {
             yield data.response;
           }

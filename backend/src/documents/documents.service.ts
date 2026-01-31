@@ -73,7 +73,7 @@ export class DocumentsService {
       `Document ${document.id} queued for processing. Ensure Redis is running; watch for "processed successfully" or "processing failed" in logs.`,
     );
 
-    return this.toResponse(documentWithPath as PrismaDocument);
+    return this.toResponse(documentWithPath);
   }
 
   async findAllByUser(userId: string): Promise<DocumentResponseDto[]> {
@@ -154,7 +154,7 @@ export class DocumentsService {
       { attempts: 3, backoff: { type: 'exponential', delay: 2000 } },
     );
     this.logger.log(`Document ${id} re-queued for processing (retry).`);
-    return this.toResponse(updated as PrismaDocument);
+    return this.toResponse(updated);
   }
 
   /**
@@ -192,7 +192,7 @@ export class DocumentsService {
       id: doc.id,
       name: doc.name,
       uploadedAt: doc.uploadedAt,
-      status: doc.status as DocumentStatus,
+      status: doc.status,
       progress: doc.progress,
       size: doc.size ?? undefined,
     };

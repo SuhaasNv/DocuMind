@@ -24,7 +24,10 @@ import { DocumentsService } from './documents.service.js';
 import { RetrievalService } from './retrieval.service.js';
 import { RagOrchestratorService } from './rag-orchestrator.service.js';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard.js';
-import { CurrentUser, type JwtPayload } from '../common/decorators/current-user.decorator.js';
+import {
+  CurrentUser,
+  type JwtPayload,
+} from '../common/decorators/current-user.decorator.js';
 import type { DocumentResponseDto } from './dto/document-response.dto.js';
 import type { RetrievalResponseDto } from './dto/retrieval-response.dto.js';
 import type { ChatResponseDto } from './dto/chat-response.dto.js';
@@ -67,7 +70,9 @@ export class DocumentsController {
   }
 
   @Get()
-  async findAll(@CurrentUser() user: JwtPayload): Promise<DocumentResponseDto[]> {
+  async findAll(
+    @CurrentUser() user: JwtPayload,
+  ): Promise<DocumentResponseDto[]> {
     return this.documentsService.findAllByUser(user.sub);
   }
 
@@ -155,13 +160,17 @@ export class DocumentsController {
         } else {
           res.write(`event: done\ndata: ${JSON.stringify(event.data)}\n\n`);
         }
-        if (typeof (res as Response & { flush?: () => void }).flush === 'function') {
+        if (
+          typeof (res as Response & { flush?: () => void }).flush === 'function'
+        ) {
           (res as Response & { flush: () => void }).flush();
         }
       }
     } catch {
       if (!ac.signal.aborted && !res.writableEnded) {
-        res.write(`event: error\ndata: ${JSON.stringify({ message: 'Stream error' })}\n\n`);
+        res.write(
+          `event: error\ndata: ${JSON.stringify({ message: 'Stream error' })}\n\n`,
+        );
       }
     } finally {
       if (!res.writableEnded) {

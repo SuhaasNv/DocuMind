@@ -89,7 +89,11 @@ export class AuthService {
     return { id: user.id, email: user.email, name: user.name };
   }
 
-  private buildAuthResponse(user: { id: string; email: string; name: string }): AuthResponse {
+  private buildAuthResponse(user: {
+    id: string;
+    email: string;
+    name: string;
+  }): AuthResponse {
     const payload: JwtPayload = {
       sub: user.id,
       email: user.email,

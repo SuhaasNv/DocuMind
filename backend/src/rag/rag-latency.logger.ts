@@ -22,7 +22,9 @@ export function logRagLatency(timings: RagLatencyTimings): void {
       : null;
   logger.log(
     `retrieval=${timings.retrievalMs}ms promptBuild=${timings.promptBuildMs}ms` +
-      (timings.llmFirstTokenMs != null ? ` llmFirstToken=${timings.llmFirstTokenMs}ms` : '') +
+      (timings.llmFirstTokenMs != null
+        ? ` llmFirstToken=${timings.llmFirstTokenMs}ms`
+        : '') +
       (ttft != null ? ` ttft=${ttft}ms` : ''),
   );
 }
