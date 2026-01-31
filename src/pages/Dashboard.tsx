@@ -54,10 +54,9 @@ const Dashboard = () => {
   }, [accessToken, setDocuments]);
 
   return (
-    <>
+    <div className="flex flex-col flex-1 min-h-0">
       <Header title="Documents" />
-      
-      <main className="flex-1 overflow-y-auto overflow-x-hidden">
+      <main className="flex-1 min-h-0 overflow-y-auto overflow-x-hidden">
         <div className="container mx-auto max-w-4xl px-4 sm:px-6 py-6 sm:py-8">
           {/* Upload area */}
           <UploadArea />
@@ -102,7 +101,7 @@ const Dashboard = () => {
           </section>
         </div>
       </main>
-    </>
+    </div>
   );
 };
 

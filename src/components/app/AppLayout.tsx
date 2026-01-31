@@ -83,7 +83,7 @@ const AppLayout = () => {
 
       <MainContent
         {...mainContentProps}
-        className="flex-1 flex flex-col overflow-hidden min-w-0"
+        className="flex-1 flex flex-col overflow-hidden min-w-0 min-h-0"
       >
         <Outlet />
       </MainContent>

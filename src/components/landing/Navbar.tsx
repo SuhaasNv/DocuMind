@@ -102,7 +102,7 @@ const Navbar = () => {
                   </Button>
                 </Link>
                 <Link to="/register">
-                  <Button variant="default" size="sm" className="min-h-touch text-xs sm:text-sm px-2.5 sm:px-3 whitespace-nowrap shrink-0" title="Get Started">
+                  <Button variant="default" size="sm" className="min-h-touch text-xs sm:text-sm px-3 sm:px-4 whitespace-nowrap shrink-0 justify-center items-center inline-flex" title="Get Started">
                     <span className="hidden min-[380px]:inline">Get Started</span>
                     <span className="min-[380px]:hidden">Start</span>
                   </Button>

@@ -25,7 +25,7 @@ const Header = ({ title = 'Documents' }: HeaderProps) => {
   };
 
   return (
-    <header className="h-16 min-h-touch border-b border-border bg-background/80 backdrop-blur-lg flex items-center justify-between px-4 sm:px-6 pl-safe pr-safe sticky top-0 z-40 shrink-0">
+    <header className="h-16 min-h-touch border-b border-border bg-background/95 backdrop-blur-lg flex items-center justify-between px-4 sm:px-6 pl-safe pr-safe sticky top-0 z-40 shrink-0">
       {/* Left section */}
       <div className="flex items-center gap-2 sm:gap-4 min-w-0">
         <Button
