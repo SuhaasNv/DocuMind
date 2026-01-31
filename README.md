@@ -82,9 +82,11 @@
 
 | Component   | Technology |
 |------------|------------|
-| Database   | PostgreSQL 16 + pgvector (Docker) |
-| Cache/Queue| Redis 7 (Docker) |
-| App hosts  | Backend and frontend run on the **host** (not in Docker); only Postgres and Redis are containerized |
+| Database   | PostgreSQL 16 + pgvector (Docker **local only**; production uses managed Postgres) |
+| Cache/Queue| Redis 7 (Docker **local only**; production uses managed Redis) |
+| App hosts  | Backend and frontend run on the **host** (not in Docker); only Postgres and Redis are containerized locally |
+
+**Local vs production:** Docker (this repo’s `docker-compose`) is for **local development only**. In production, use managed Postgres and Redis (e.g. Neon, RDS, Upstash, ElastiCache); backend and frontend are deployed to your chosen app hosts without Docker.
 
 ---
 

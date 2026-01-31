@@ -1,0 +1,1 @@
+“Confirm that Docker is only used for Postgres and Redis. Backend and frontend must not be containerized at this stage.”
