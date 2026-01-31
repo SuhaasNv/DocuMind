@@ -34,17 +34,29 @@ async function bootstrap() {
     }),
   );
 
-  // CORS: allow frontend with credentials for auth/SSE.
-  // CORS_ORIGIN can be a single origin or comma-separated list (e.g. "https://app.railway.app,http://localhost:8080").
+  // CORS: allow frontend with credentials. Accept CORS_ORIGIN list and also any *.vercel.app / *.railway.app so previews work.
   const corsOriginEnv = process.env.CORS_ORIGIN ?? 'http://localhost:8080';
   const corsOrigins = corsOriginEnv.split(',').map((o) => o.trim()).filter(Boolean);
+  const allowedSet = new Set(corsOrigins.length > 0 ? corsOrigins : ['http://localhost:8080']);
+  const allowOrigin = (origin: string | undefined): boolean => {
+    if (!origin) return true;
+    if (allowedSet.has(origin)) return true;
+    try {
+      const u = new URL(origin);
+      if (u.hostname.endsWith('.vercel.app') || u.hostname.endsWith('.railway.app')) return true;
+    } catch {
+      /* ignore */
+    }
+    return false;
+  };
   app.enableCors({
-    origin: corsOrigins.length > 0 ? corsOrigins : ['http://localhost:8080'],
+    origin: (origin: string | undefined, callback: (err: Error | null, allow?: boolean | string) => void) =>
+      callback(null, allowOrigin(origin) ? (origin ?? true) : false),
     credentials: true,
     methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
     allowedHeaders: ['Content-Type', 'Authorization'],
   });
-  console.log('[CORS] Allowed origins:', corsOrigins);
+  console.log('[CORS] Allowed origins:', [...allowedSet], '+ *.vercel.app, *.railway.app');
 
   app.enableShutdownHooks();
 
