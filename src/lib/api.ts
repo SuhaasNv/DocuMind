@@ -22,8 +22,12 @@ export function getApiBaseUrl(): string | null {
   return url.replace(/\/$/, ''); // strip trailing slash
 }
 
-/** Load /runtime-config.json and set runtime API URL. Resolves when done or after timeout. */
+/** Load /runtime-config.json and set runtime API URL. In development we skip fetch and use .env only. */
 export function initRuntimeConfig(): Promise<void> {
+  const isDev = (import.meta as unknown as { env: { DEV?: boolean } }).env?.DEV === true;
+  if (isDev) {
+    return Promise.resolve();
+  }
   const timeoutMs = 2000;
   return Promise.race([
     fetch('/runtime-config.json')
