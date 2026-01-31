@@ -6,6 +6,8 @@ export interface BubbleBackgroundProps {
   className?: string;
   children?: React.ReactNode;
   interactive?: boolean;
+  /** When true, use a lightweight CSS-only background (no goo filter, fewer bubbles) for smoother performance on tablets/phones. */
+  reduceMotion?: boolean;
   transition?: SpringOptions;
   colors?: {
     first: string;
@@ -31,6 +33,7 @@ export function BubbleBackground({
   className,
   children,
   interactive = false,
+  reduceMotion = false,
   transition = { stiffness: 100, damping: 20 },
   colors = DOCUMIND_BUBBLE_COLORS,
 }: BubbleBackgroundProps) {
@@ -54,15 +57,68 @@ export function BubbleBackground({
   );
 
   useEffect(() => {
-    if (!interactive) return;
-    // Listen on window so we get mouse movement even when layers above (overlay, content) capture the cursor
+    if (!interactive || reduceMotion) return;
     const onMove = (e: MouseEvent) => handleMouseMove(e);
     window.addEventListener("mousemove", onMove);
     return () => window.removeEventListener("mousemove", onMove);
-  }, [interactive, handleMouseMove]);
+  }, [interactive, reduceMotion, handleMouseMove]);
 
   const makeGradient = (color: string) =>
     `radial-gradient(circle at center, rgba(${color}, 0.8) 0%, rgba(${color}, 0) 50%)`;
+
+  /* Lightweight mode for tablet/mobile: no goo filter, 3 CSS-animated blobs only */
+  if (reduceMotion) {
+    return (
+      <div
+        ref={containerRef}
+        className={cn(
+          "absolute inset-0 overflow-hidden bg-gradient-to-br from-background via-[hsl(220,20%,5%)] to-[hsl(220,25%,3%)]",
+          className
+        )}
+      >
+        <div
+          className="absolute inset-0"
+          style={{ filter: "blur(60px)", WebkitFilter: "blur(60px)" }}
+        >
+          <div
+            className="absolute rounded-full bubble-soft-a mix-blend-hard-light opacity-50"
+            style={{
+              width: "85%",
+              height: "85%",
+              top: "5%",
+              left: "5%",
+              background: makeGradient(colors.first),
+            }}
+          />
+          <div
+            className="absolute rounded-full bubble-soft-b mix-blend-hard-light opacity-40"
+            style={{
+              width: "80%",
+              height: "80%",
+              top: "30%",
+              right: "0",
+              left: "auto",
+              background: makeGradient(colors.third),
+            }}
+          />
+          <div
+            className="absolute rounded-full bubble-soft-c mix-blend-hard-light opacity-40"
+            style={{
+              width: "75%",
+              height: "75%",
+              bottom: "10%",
+              left: "10%",
+              top: "auto",
+              background: makeGradient(colors.fifth),
+            }}
+          />
+        </div>
+        {children != null && (
+          <div className="relative z-10 h-full w-full">{children}</div>
+        )}
+      </div>
+    );
+  }
 
   return (
     <div
