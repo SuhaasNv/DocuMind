@@ -49,12 +49,18 @@ const Register = () => {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ name: name.trim(), email: email.trim(), password }),
       });
-      const data = (await res.json()) as AuthResponse | { message?: string | string[] };
+      const text = await res.text();
+      let data: AuthResponse | { message?: string | string[] };
+      try {
+        data = (text ? JSON.parse(text) : {}) as AuthResponse | { message?: string | string[] };
+      } catch {
+        data = {};
+      }
 
       if (!res.ok) {
         const msg = (data as { message?: string | string[] }).message;
-        const message = typeof msg === 'string' ? msg : Array.isArray(msg) ? msg[0] : 'Registration failed';
-        setError(message || 'Registration failed');
+        const message = typeof msg === 'string' ? msg : Array.isArray(msg) ? msg[0] : null;
+        setError(message || `Registration failed (${res.status})`);
         setIsLoading(false);
         return;
       }
@@ -68,7 +74,6 @@ const Register = () => {
       setAuthenticated(true, user, accessToken);
       navigate('/app');
     } catch (err) {
-      // Show actual HTTP/network error cause (e.g. "Failed to fetch"), not a generic message.
       setError(getApiErrorMessage(err, 'Registration failed. Please try again.'));
     } finally {
       setIsLoading(false);

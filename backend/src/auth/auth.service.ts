@@ -33,15 +33,15 @@ export class AuthService {
   ) {}
 
   async register(dto: RegisterDto): Promise<AuthResponse> {
-    const existing = await this.prisma.user.findUnique({
-      where: { email: dto.email.toLowerCase() },
-    });
-    if (existing) {
-      throw new ConflictException('Email already registered');
-    }
-
-    const passwordHash = await bcrypt.hash(dto.password, SALT_ROUNDS);
     try {
+      const existing = await this.prisma.user.findUnique({
+        where: { email: dto.email.toLowerCase() },
+      });
+      if (existing) {
+        throw new ConflictException('Email already registered');
+      }
+
+      const passwordHash = await bcrypt.hash(dto.password, SALT_ROUNDS);
       const user = await this.prisma.user.create({
         data: {
           email: dto.email.toLowerCase(),
@@ -51,14 +51,18 @@ export class AuthService {
       });
       return this.buildAuthResponse(user);
     } catch (err) {
+      if (err instanceof ConflictException) throw err;
       if (err instanceof Prisma.PrismaClientKnownRequestError) {
         if (err.code === 'P2002') {
           throw new ConflictException('Email already registered');
         }
       }
-      if (err instanceof Prisma.PrismaClientInitializationError) {
+      if (
+        err instanceof Prisma.PrismaClientKnownRequestError ||
+        err instanceof Prisma.PrismaClientInitializationError
+      ) {
         throw new ServiceUnavailableException(
-          'Database unavailable. Ensure Postgres is running (e.g. docker compose up -d) and DATABASE_URL is correct.',
+          'Database error. Ensure migrations are run on the production database (npx prisma migrate deploy).',
         );
       }
       throw err;
