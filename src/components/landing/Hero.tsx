@@ -23,7 +23,7 @@ const COMPANIES = [
 const Hero = () => {
   const isAuthenticated = useAppStore((s) => s.isAuthenticated);
   return (
-    <section className="relative min-h-screen min-h-[100dvh] flex flex-col items-center justify-start sm:justify-center overflow-hidden pt-safe pb-8 sm:pt-0 sm:pb-0">
+    <section className="relative min-h-screen min-h-[100dvh] flex flex-col items-center justify-start sm:justify-center overflow-hidden pt-safe pb-[max(5rem,calc(4rem+env(safe-area-inset-bottom,0px)))] sm:pt-0 sm:pb-0">
       {/* Background image */}
       <div 
         className="absolute inset-0 bg-cover bg-center bg-no-repeat opacity-40"

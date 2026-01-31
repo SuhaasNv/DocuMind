@@ -31,14 +31,14 @@ const Navbar = () => {
       transition={{ duration: 0.2 }}
       className="fixed top-0 left-0 right-0 z-50 pt-safe px-safe"
     >
-      <div className="mx-auto max-w-7xl px-4 sm:px-6 py-3 sm:py-4">
-        <nav className="flex items-center justify-between rounded-2xl glass-card px-4 sm:px-6 py-3 overflow-hidden">
-          {/* Logo */}
-          <Link to="/" className="flex items-center gap-2 shrink-0">
-            <div className="w-8 h-8 rounded-lg bg-primary/20 flex items-center justify-center">
-              <FileText className="w-4 h-4 text-primary" />
+      <div className="mx-auto max-w-7xl px-2 xs:px-4 sm:px-6 py-3 sm:py-4">
+        <nav className="flex items-center justify-between gap-1 sm:gap-2 rounded-2xl glass-card px-2 xs:px-4 sm:px-6 py-2.5 sm:py-3 overflow-hidden min-w-0">
+          {/* Logo - compact on very small screens */}
+          <Link to="/" className="flex items-center gap-1.5 sm:gap-2 shrink-0 min-w-0">
+            <div className="w-7 h-7 sm:w-8 sm:h-8 rounded-lg bg-primary/20 flex items-center justify-center shrink-0">
+              <FileText className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-primary" />
             </div>
-            <span className="text-lg font-semibold">DocuMind</span>
+            <span className="text-base sm:text-lg font-semibold truncate">DocuMind</span>
           </Link>
 
           {/* Desktop Navigation Links */}
@@ -51,7 +51,7 @@ const Navbar = () => {
           </div>
 
           {/* Mobile: hamburger + sheet with nav links */}
-          <div className="flex md:hidden items-center gap-2">
+          <div className="flex md:hidden items-center gap-1 shrink-0">
             <Sheet open={mobileNavOpen} onOpenChange={setMobileNavOpen}>
               <SheetTrigger asChild>
                 <Button variant="ghost" size="icon" className="min-h-touch min-w-touch" aria-label="Open menu">
@@ -75,12 +75,12 @@ const Navbar = () => {
             </Sheet>
           </div>
 
-          {/* Auth Buttons - touch targets on mobile; hide on mobile when sheet is used (auth stays visible) */}
-          <div className="flex items-center gap-2 sm:gap-3 shrink-0">
+          {/* Auth Buttons - compact on small screens so "Get Started" fits */}
+          <div className="flex items-center gap-1 sm:gap-2 shrink-0 min-w-0">
             {isAuthenticated ? (
               <>
                 <Link to="/app">
-                  <Button variant="default" size="sm" className="min-h-touch">
+                  <Button variant="default" size="sm" className="min-h-touch text-xs sm:text-sm px-2.5 sm:px-3">
                     Documents
                   </Button>
                 </Link>
@@ -88,7 +88,7 @@ const Navbar = () => {
                   variant="ghost"
                   size="icon"
                   onClick={handleLogout}
-                  className="min-h-touch min-w-touch md:min-h-0 md:min-w-0 text-muted-foreground hover:text-foreground"
+                  className="min-h-touch min-w-touch md:min-h-0 md:min-w-0 text-muted-foreground hover:text-foreground shrink-0"
                   aria-label="Log out"
                 >
                   <LogOut className="w-4 h-4" />
@@ -97,13 +97,14 @@ const Navbar = () => {
             ) : (
               <>
                 <Link to="/login">
-                  <Button variant="ghost" size="sm" className="min-h-touch">
+                  <Button variant="ghost" size="sm" className="min-h-touch text-xs sm:text-sm px-2 sm:px-3 shrink-0">
                     Log in
                   </Button>
                 </Link>
                 <Link to="/register">
-                  <Button variant="default" size="sm" className="min-h-touch">
-                    Get Started
+                  <Button variant="default" size="sm" className="min-h-touch text-xs sm:text-sm px-2.5 sm:px-3 whitespace-nowrap shrink-0" title="Get Started">
+                    <span className="hidden min-[380px]:inline">Get Started</span>
+                    <span className="min-[380px]:hidden">Start</span>
                   </Button>
                 </Link>
               </>
