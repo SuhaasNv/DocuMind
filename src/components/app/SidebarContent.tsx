@@ -1,4 +1,5 @@
-import { Link, useLocation } from 'react-router-dom';
+import { useState } from 'react';
+import { Link, useLocation, useNavigate } from 'react-router-dom';
 import {
   FileText,
   Home,
@@ -6,10 +7,22 @@ import {
   Settings,
   LogOut,
   Plus,
+  Trash2,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
 import { useAppStore } from '@/stores/useAppStore';
+import { getApiBaseUrl } from '@/lib/api';
 
 interface SidebarContentProps {
   /** When true, show labels next to icons. When false, icons only (collapsed). */
@@ -24,7 +37,10 @@ interface SidebarContentProps {
 
 const SidebarContent = ({ isExpanded, onLinkClick, isMobileSheet = false, showLogo = false }: SidebarContentProps) => {
   const location = useLocation();
-  const { setAuthenticated, abortActiveSSE, documents, documentSearchQuery } = useAppStore();
+  const pathname = location.pathname;
+  const navigate = useNavigate();
+  const [deleteDocId, setDeleteDocId] = useState<string | null>(null);
+  const { setAuthenticated, abortActiveSSE, documents, documentSearchQuery, removeDocument, accessToken } = useAppStore();
 
   const recentDocuments = documentSearchQuery.trim()
     ? documents.filter((doc) =>
@@ -36,6 +52,25 @@ const SidebarContent = ({ isExpanded, onLinkClick, isMobileSheet = false, showLo
     abortActiveSSE?.();
     setAuthenticated(false, null, null);
     onLinkClick?.();
+  };
+
+  const handleConfirmDelete = async () => {
+    if (!deleteDocId) return;
+    const docId = deleteDocId;
+    setDeleteDocId(null);
+    onLinkClick?.();
+    if (accessToken) {
+      try {
+        await fetch(`${getApiBaseUrl()}/documents/${docId}`, {
+          method: 'DELETE',
+          headers: { Authorization: `Bearer ${accessToken}` },
+        });
+      } catch {
+        // Remove from UI anyway
+      }
+    }
+    removeDocument(docId);
+    if (pathname === `/chat/${docId}`) navigate('/app');
   };
 
   const navItems = [
@@ -117,25 +152,51 @@ const SidebarContent = ({ isExpanded, onLinkClick, isMobileSheet = false, showLo
             </h3>
             <ul className="space-y-1">
               {recentDocuments.map((doc) => {
-                const isActive = location.pathname === `/chat/${doc.id}`;
+                const isActive = pathname === `/chat/${doc.id}`;
                 return (
                   <li key={doc.id}>
-                    <Link
-                      to={`/chat/${doc.id}`}
-                      onClick={onLinkClick}
+                    <div
                       className={cn(
-                        'flex items-center gap-3 px-3 py-2 rounded-lg transition-colors min-h-touch md:min-h-0',
+                        'flex items-center gap-1 px-1 py-1 rounded-lg group',
                         isActive
-                          ? 'bg-primary/20 text-primary border border-primary/30'
-                          : 'text-sidebar-foreground hover:bg-sidebar-accent/50 hover:text-sidebar-accent-foreground',
-                        isMobileSheet && 'py-3 text-sm'
+                          ? 'bg-primary/20 border border-primary/30'
+                          : 'hover:bg-sidebar-accent/50',
+                        isMobileSheet && 'py-2'
                       )}
                     >
-                      <FileText className="w-4 h-4 flex-shrink-0" />
-                      <span className={cn('truncate', isMobileSheet ? 'text-base' : 'text-sm')}>
-                        {doc.name}
-                      </span>
-                    </Link>
+                      <Link
+                        to={`/chat/${doc.id}`}
+                        onClick={onLinkClick}
+                        className={cn(
+                          'flex items-center gap-3 px-2 py-1.5 rounded-md flex-1 min-w-0 transition-colors min-h-touch md:min-h-0',
+                          isActive
+                            ? 'text-primary'
+                            : 'text-sidebar-foreground hover:text-sidebar-accent-foreground',
+                          isMobileSheet && 'py-3 text-sm'
+                        )}
+                      >
+                        <FileText className="w-4 h-4 flex-shrink-0" />
+                        <span className={cn('truncate', isMobileSheet ? 'text-base' : 'text-sm')}>
+                          {doc.name}
+                        </span>
+                      </Link>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className={cn(
+                          'h-7 w-7 shrink-0 text-muted-foreground hover:text-destructive opacity-0 group-hover:opacity-100 transition-opacity min-h-touch md:min-h-0',
+                          isMobileSheet && 'opacity-100'
+                        )}
+                        onClick={(e) => {
+                          e.preventDefault();
+                          e.stopPropagation();
+                          setDeleteDocId(doc.id);
+                        }}
+                        aria-label={`Delete ${doc.name}`}
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </Button>
+                    </div>
                   </li>
                 );
               })}
@@ -143,6 +204,24 @@ const SidebarContent = ({ isExpanded, onLinkClick, isMobileSheet = false, showLo
           </div>
         )}
       </nav>
+
+      {/* Delete confirmation */}
+      <AlertDialog open={deleteDocId !== null} onOpenChange={(open) => !open && setDeleteDocId(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete document?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This will remove the document from your list. This action cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction onClick={handleConfirmDelete} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">
+              Delete
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       {/* Footer / Logout */}
       <div className={cn('border-t border-sidebar-border p-3 pb-safe', isMobileSheet && 'pb-4')}>

@@ -1,8 +1,19 @@
+import { useState } from 'react';
 import { motion } from 'framer-motion';
 import { FileText, MessageSquare, Trash2, Clock, AlertTriangle, CheckCircle, Loader2 } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
 import { Document, DocumentStatus, useAppStore } from '@/stores/useAppStore';
 import { getApiBaseUrl } from '@/lib/api';
 import { formatDistanceToNow } from 'date-fns';
@@ -43,10 +54,16 @@ const DocumentCard = ({ document }: DocumentCardProps) => {
   const accessToken = useAppStore((state) => state.accessToken);
   const status = statusConfig[document.status];
   const StatusIcon = status.icon;
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
 
-  const handleDelete = async (e: React.MouseEvent) => {
+  const handleDeleteClick = (e: React.MouseEvent) => {
     e.preventDefault();
     e.stopPropagation();
+    setShowDeleteConfirm(true);
+  };
+
+  const handleConfirmDelete = async () => {
+    setShowDeleteConfirm(false);
     if (accessToken) {
       try {
         await fetch(`${getApiBaseUrl()}/documents/${document.id}`, {
@@ -132,7 +149,7 @@ const DocumentCard = ({ document }: DocumentCardProps) => {
             <Button
               variant="ghost"
               size="sm"
-              onClick={handleDelete}
+              onClick={handleDeleteClick}
               className="text-muted-foreground hover:text-destructive opacity-0 group-hover:opacity-100 transition-opacity"
             >
               <Trash2 className="w-4 h-4" />
@@ -140,6 +157,23 @@ const DocumentCard = ({ document }: DocumentCardProps) => {
           </div>
         </div>
       </div>
+
+      <AlertDialog open={showDeleteConfirm} onOpenChange={setShowDeleteConfirm}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete document?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This will remove &quot;{document.name}&quot; from your list. This action cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction onClick={handleConfirmDelete} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">
+              Delete
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </motion.div>
   );
 };
