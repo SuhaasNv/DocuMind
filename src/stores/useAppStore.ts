@@ -33,6 +33,14 @@ export interface Conversation {
   createdAt: Date;
 }
 
+export interface AppNotification {
+  id: string;
+  documentId: string;
+  documentName: string;
+  read: boolean;
+  createdAt: number;
+}
+
 interface AppState {
   // Auth state
   isAuthenticated: boolean;
@@ -52,6 +60,11 @@ interface AppState {
   isUploading: boolean;
   documentSearchQuery: string;
   setDocumentSearchQuery: (query: string) => void;
+
+  // Notifications (document processed, etc.) – not persisted
+  notifications: AppNotification[];
+  markNotificationRead: (id: string) => void;
+  markAllNotificationsRead: () => void;
 
   // SSE abort (not persisted): call to abort active chat stream on logout
   abortActiveSSE: (() => void) | null;
@@ -90,6 +103,15 @@ export const useAppStore = create<AppState>()(
       isUploading: false,
       documentSearchQuery: '',
       setDocumentSearchQuery: (query) => set({ documentSearchQuery: query }),
+      notifications: [],
+      markNotificationRead: (id) => set((state) => ({
+        notifications: state.notifications.map((n) =>
+          n.id === id ? { ...n, read: true } : n
+        ),
+      })),
+      markAllNotificationsRead: () => set((state) => ({
+        notifications: state.notifications.map((n) => ({ ...n, read: true })),
+      })),
       abortActiveSSE: null,
       setAbortActiveSSE: (fn) => set({ abortActiveSSE: fn }),
 
@@ -125,11 +147,26 @@ export const useAppStore = create<AppState>()(
     },
   })),
 
-  updateDocument: (id, updates) => set((state) => ({
-    documents: state.documents.map((doc) =>
+  updateDocument: (id, updates) => set((state) => {
+    const prev = state.documents.find((d) => d.id === id);
+    const documents = state.documents.map((doc) =>
       doc.id === id ? { ...doc, ...updates } : doc
-    ),
-  })),
+    );
+    let notifications = state.notifications;
+    if (updates.status === 'DONE' && prev?.status !== 'DONE') {
+      notifications = [
+        {
+          id: `notif-${id}-${Date.now()}`,
+          documentId: id,
+          documentName: prev?.name ?? 'Document',
+          read: false,
+          createdAt: Date.now(),
+        },
+        ...notifications,
+      ];
+    }
+    return { documents, notifications };
+  }),
 
   removeDocument: (id) => set((state) => ({
     documents: state.documents.filter((doc) => doc.id !== id),

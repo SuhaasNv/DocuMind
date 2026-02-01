@@ -1,4 +1,5 @@
-import { Menu, Bell, Search, Settings, LogOut } from 'lucide-react';
+import { useState } from 'react';
+import { Menu, Bell, Search, Settings, LogOut, FileText } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -8,16 +9,32 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { useAppStore } from '@/stores/useAppStore';
 import { useIsMobile } from '@/hooks/use-mobile';
+import { cn } from '@/lib/utils';
 
 interface HeaderProps {
   title?: string;
 }
 
 const Header = ({ title = 'Documents' }: HeaderProps) => {
+  const [notifOpen, setNotifOpen] = useState(false);
   const isMobile = useIsMobile();
-  const { toggleSidebar, setMobileMenuOpen, user, setAuthenticated, abortActiveSSE, documentSearchQuery, setDocumentSearchQuery } = useAppStore();
+  const {
+    toggleSidebar,
+    setMobileMenuOpen,
+    user,
+    setAuthenticated,
+    abortActiveSSE,
+    documentSearchQuery,
+    setDocumentSearchQuery,
+    notifications,
+    markNotificationRead,
+    markAllNotificationsRead,
+  } = useAppStore();
+
+  const unreadCount = notifications.filter((n) => !n.read).length;
 
   const handleLogout = () => {
     abortActiveSSE?.();
@@ -56,9 +73,73 @@ const Header = ({ title = 'Documents' }: HeaderProps) => {
         </div>
 
         {/* Notifications */}
-        <Button variant="ghost" size="icon" className="min-h-touch min-w-touch md:min-h-0 md:min-w-0 text-muted-foreground" aria-label="Notifications">
-          <Bell className="w-5 h-5" />
-        </Button>
+        <Popover open={notifOpen} onOpenChange={setNotifOpen}>
+          <PopoverTrigger asChild>
+            <Button
+              variant="ghost"
+              size="icon"
+              className="relative min-h-touch min-w-touch md:min-h-0 md:min-w-0 text-muted-foreground"
+              aria-label={unreadCount > 0 ? `${unreadCount} unread notifications` : 'Notifications'}
+            >
+              <Bell className="w-5 h-5" />
+              {unreadCount > 0 && (
+                <span className="absolute top-1 right-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-primary px-1 text-[10px] font-medium text-primary-foreground">
+                  {unreadCount > 9 ? '9+' : unreadCount}
+                </span>
+              )}
+            </Button>
+          </PopoverTrigger>
+          <PopoverContent align="end" className="w-80 p-0">
+            <div className="flex items-center justify-between border-b border-border px-4 py-3">
+              <h3 className="font-semibold text-sm">Notifications</h3>
+              {unreadCount > 0 && (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="text-xs text-primary hover:text-primary"
+                  onClick={() => markAllNotificationsRead()}
+                >
+                  Mark all read
+                </Button>
+              )}
+            </div>
+            <div className="max-h-[280px] overflow-y-auto">
+              {notifications.length === 0 ? (
+                <p className="px-4 py-6 text-center text-sm text-muted-foreground">
+                  No notifications yet. When a document finishes processing, it will appear here.
+                </p>
+              ) : (
+                <ul className="py-1">
+                  {notifications.map((n) => (
+                    <li key={n.id}>
+                      <Link
+                        to={`/chat/${n.documentId}`}
+                        onClick={() => {
+                          markNotificationRead(n.id);
+                          setNotifOpen(false);
+                        }}
+                        className={cn(
+                          'flex items-start gap-3 px-4 py-3 text-left transition-colors hover:bg-muted/50',
+                          !n.read && 'bg-primary/5'
+                        )}
+                      >
+                        <div className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-primary/20">
+                          <FileText className="h-4 w-4 text-primary" />
+                        </div>
+                        <div className="min-w-0 flex-1">
+                          <p className={cn('text-sm font-medium', !n.read && 'text-primary')}>
+                            Document ready
+                          </p>
+                          <p className="truncate text-xs text-muted-foreground">{n.documentName}</p>
+                        </div>
+                      </Link>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
+          </PopoverContent>
+        </Popover>
 
         {/* User avatar dropdown */}
         <DropdownMenu>
