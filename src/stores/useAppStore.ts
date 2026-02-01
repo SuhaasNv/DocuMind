@@ -65,6 +65,7 @@ interface AppState {
   notifications: AppNotification[];
   markNotificationRead: (id: string) => void;
   markAllNotificationsRead: () => void;
+  clearNotifications: () => void;
 
   // SSE abort (not persisted): call to abort active chat stream on logout
   abortActiveSSE: (() => void) | null;
@@ -112,6 +113,7 @@ export const useAppStore = create<AppState>()(
       markAllNotificationsRead: () => set((state) => ({
         notifications: state.notifications.map((n) => ({ ...n, read: true })),
       })),
+      clearNotifications: () => set({ notifications: [] }),
       abortActiveSSE: null,
       setAbortActiveSSE: (fn) => set({ abortActiveSSE: fn }),
 

@@ -32,6 +32,7 @@ const Header = ({ title = 'Documents' }: HeaderProps) => {
     notifications,
     markNotificationRead,
     markAllNotificationsRead,
+    clearNotifications,
   } = useAppStore();
 
   const unreadCount = notifications.filter((n) => !n.read).length;
@@ -92,16 +93,31 @@ const Header = ({ title = 'Documents' }: HeaderProps) => {
           <PopoverContent align="end" className="w-80 p-0">
             <div className="flex items-center justify-between border-b border-border px-4 py-3">
               <h3 className="font-semibold text-sm">Notifications</h3>
-              {unreadCount > 0 && (
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  className="text-xs text-primary hover:text-primary"
-                  onClick={() => markAllNotificationsRead()}
-                >
-                  Mark all read
-                </Button>
-              )}
+              <div className="flex items-center gap-1">
+                {unreadCount > 0 && (
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="text-xs text-primary hover:text-primary"
+                    onClick={() => markAllNotificationsRead()}
+                  >
+                    Mark all read
+                  </Button>
+                )}
+                {notifications.length > 0 && (
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="text-xs text-muted-foreground hover:text-foreground"
+                    onClick={() => {
+                      clearNotifications();
+                      setNotifOpen(false);
+                    }}
+                  >
+                    Clear
+                  </Button>
+                )}
+              </div>
             </div>
             <div className="max-h-[280px] overflow-y-auto">
               {notifications.length === 0 ? (
