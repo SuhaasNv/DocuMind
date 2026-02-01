@@ -4,7 +4,7 @@ import { useAppStore } from '@/stores/useAppStore';
 
 /**
  * Protects /app and /chat routes: waits for Zustand persistence hydration,
- * then redirects to /login when unauthenticated. No API or SSE runs before
+ * then redirects to home (/) when unauthenticated. No API or SSE runs before
  * auth is confirmed because children (AppLayout + outlet) only render when
  * authenticated.
  */
@@ -39,7 +39,7 @@ export default function ProtectedRoute({ children }: { children: React.ReactNode
   }
 
   if (!isAuthenticated) {
-    return <Navigate to="/login" replace />;
+    return <Navigate to="/" replace />;
   }
 
   return <>{children}</>;

@@ -16,6 +16,7 @@ import { useAppStore } from '@/stores/useAppStore';
 
 const Sidebar = () => {
   const location = useLocation();
+  const pathname = location.pathname;
   const { isSidebarOpen, toggleSidebar, setAuthenticated, abortActiveSSE, documents, documentSearchQuery } = useAppStore();
 
   const recentDocuments = documentSearchQuery.trim()
@@ -43,22 +44,29 @@ const Sidebar = () => {
       className="h-screen bg-sidebar border-r border-sidebar-border flex flex-col"
     >
       {/* Header */}
-      <div className="h-16 flex items-center justify-between px-4 border-b border-sidebar-border">
+      <div className="h-16 flex items-center justify-between px-4 border-b border-sidebar-border gap-2">
         <AnimatePresence mode="wait">
-          {isSidebarOpen && (
+          {isSidebarOpen ? (
             <motion.div
               initial={{ opacity: 0, x: -10 }}
               animate={{ opacity: 1, x: 0 }}
               exit={{ opacity: 0, x: -10 }}
               transition={{ duration: 0.15 }}
+              className="flex-1 min-w-0"
             >
-              <Link to="/" className="flex items-center gap-2">
-                <div className="w-8 h-8 rounded-lg bg-primary/20 flex items-center justify-center">
+              <Link to="/" className="flex items-center gap-2 min-w-0">
+                <div className="w-8 h-8 rounded-lg bg-primary/20 flex items-center justify-center shrink-0">
                   <FileText className="w-4 h-4 text-primary" />
                 </div>
-                <span className="font-semibold text-foreground">DocuMind</span>
+                <span className="font-semibold text-foreground truncate">DocuMind</span>
               </Link>
             </motion.div>
+          ) : (
+            <Link to="/" className="flex items-center justify-center shrink-0" aria-label="DocuMind home">
+              <div className="w-8 h-8 rounded-lg bg-primary/20 flex items-center justify-center">
+                <FileText className="w-4 h-4 text-primary" />
+              </div>
+            </Link>
           )}
         </AnimatePresence>
 
@@ -133,17 +141,25 @@ const Sidebar = () => {
               Recent Documents
             </h3>
             <ul className="space-y-1">
-              {recentDocuments.map((doc) => (
-                <li key={doc.id}>
-                  <Link
-                    to={`/chat/${doc.id}`}
-                    className="flex items-center gap-3 px-3 py-2 rounded-lg text-sidebar-foreground hover:bg-sidebar-accent/50 hover:text-sidebar-accent-foreground transition-colors"
-                  >
-                    <FileText className="w-4 h-4 flex-shrink-0" />
-                    <span className="text-sm truncate">{doc.name}</span>
-                  </Link>
-                </li>
-              ))}
+              {recentDocuments.map((doc) => {
+                const isActive = pathname === `/chat/${doc.id}`;
+                return (
+                  <li key={doc.id}>
+                    <Link
+                      to={`/chat/${doc.id}`}
+                      className={cn(
+                        'flex items-center gap-3 px-3 py-2 rounded-lg transition-colors',
+                        isActive
+                          ? 'bg-primary/20 text-primary border border-primary/30'
+                          : 'text-sidebar-foreground hover:bg-sidebar-accent/50 hover:text-sidebar-accent-foreground'
+                      )}
+                    >
+                      <FileText className="w-4 h-4 flex-shrink-0" />
+                      <span className="text-sm truncate">{doc.name}</span>
+                    </Link>
+                  </li>
+                );
+              })}
             </ul>
           </div>
         )}

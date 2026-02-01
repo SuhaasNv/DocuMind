@@ -116,23 +116,29 @@ const SidebarContent = ({ isExpanded, onLinkClick, isMobileSheet = false, showLo
               Recent Documents
             </h3>
             <ul className="space-y-1">
-              {recentDocuments.map((doc) => (
-                <li key={doc.id}>
-                  <Link
-                    to={`/chat/${doc.id}`}
-                    onClick={onLinkClick}
-                    className={cn(
-                      'flex items-center gap-3 px-3 py-2 rounded-lg text-sidebar-foreground hover:bg-sidebar-accent/50 hover:text-sidebar-accent-foreground transition-colors min-h-touch md:min-h-0',
-                      isMobileSheet && 'py-3 text-sm'
-                    )}
-                  >
-                    <FileText className="w-4 h-4 flex-shrink-0" />
-                    <span className={cn('truncate', isMobileSheet ? 'text-base' : 'text-sm')}>
-                      {doc.name}
-                    </span>
-                  </Link>
-                </li>
-              ))}
+              {recentDocuments.map((doc) => {
+                const isActive = location.pathname === `/chat/${doc.id}`;
+                return (
+                  <li key={doc.id}>
+                    <Link
+                      to={`/chat/${doc.id}`}
+                      onClick={onLinkClick}
+                      className={cn(
+                        'flex items-center gap-3 px-3 py-2 rounded-lg transition-colors min-h-touch md:min-h-0',
+                        isActive
+                          ? 'bg-primary/20 text-primary border border-primary/30'
+                          : 'text-sidebar-foreground hover:bg-sidebar-accent/50 hover:text-sidebar-accent-foreground',
+                        isMobileSheet && 'py-3 text-sm'
+                      )}
+                    >
+                      <FileText className="w-4 h-4 flex-shrink-0" />
+                      <span className={cn('truncate', isMobileSheet ? 'text-base' : 'text-sm')}>
+                        {doc.name}
+                      </span>
+                    </Link>
+                  </li>
+                );
+              })}
             </ul>
           </div>
         )}
