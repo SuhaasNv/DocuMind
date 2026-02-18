@@ -13,7 +13,12 @@ import { JwtStrategy } from './jwt.strategy.js';
       imports: [ConfigModule],
       useFactory: (config: ConfigService) => {
         const secret = config.get<string>('JWT_SECRET');
-        if (!secret || secret === 'change-me-in-production') {
+        if (
+          !secret ||
+          secret === 'change-me-in-production' ||
+          secret === 'change-me-in-production-use-long-random-string' ||
+          secret.includes('change-me')
+        ) {
           throw new Error(
             'JWT_SECRET must be set in .env to a long random string. Do not use the default.',
           );
@@ -31,4 +36,4 @@ import { JwtStrategy } from './jwt.strategy.js';
   providers: [AuthService, JwtStrategy],
   exports: [AuthService, JwtModule],
 })
-export class AuthModule {}
+export class AuthModule { }

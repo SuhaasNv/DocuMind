@@ -142,7 +142,37 @@ const DocumentCard = ({ document }: DocumentCardProps) => {
               </Link>
             )}
             {document.status === 'FAILED' && (
-              <Button variant="outline" size="sm">
+              <Button 
+                variant="outline" 
+                size="sm"
+                onClick={async () => {
+                  if (!accessToken) return;
+                  try {
+                    // Optimistic update
+                    useAppStore.getState().updateDocument(document.id, {
+                      status: 'PENDING',
+                      progress: 0,
+                    });
+                    
+                    const res = await fetch(`${getApiBaseUrl()}/documents/${document.id}/retry`, {
+                      method: 'POST',
+                      headers: { Authorization: `Bearer ${accessToken}` },
+                    });
+                    
+                    if (!res.ok) {
+                      // Revert on failure
+                      useAppStore.getState().updateDocument(document.id, {
+                        status: 'FAILED',
+                      });
+                    }
+                  } catch {
+                    // Revert on failure
+                    useAppStore.getState().updateDocument(document.id, {
+                      status: 'FAILED',
+                    });
+                  }
+                }}
+              >
                 Retry
               </Button>
             )}

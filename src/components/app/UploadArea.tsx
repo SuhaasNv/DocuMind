@@ -1,4 +1,4 @@
-import { useState, useCallback, useRef } from 'react';
+import { useState, useCallback, useRef, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Upload, FileText, X, AlertCircle } from 'lucide-react';
 import { cn } from '@/lib/utils';
@@ -131,6 +131,14 @@ const UploadArea = () => {
     },
     [accessToken, addDocument, setUploading, pollDocumentStatus],
   );
+
+  // Clean up poll intervals on unmount
+  useEffect(() => {
+    return () => {
+      Object.values(pollRef.current).forEach(clearInterval);
+      pollRef.current = {};
+    };
+  }, []);
 
   return (
     <div className="mb-8">
