@@ -84,6 +84,8 @@ interface AppState {
   setMessageSources: (documentId: string, messageId: string, sources: ChatSource[]) => void;
   toggleSidebar: () => void;
   setSidebarOpen: (open: boolean) => void;
+  isMobileMenuOpen: boolean;
+  setMobileMenuOpen: (open: boolean) => void;
   setUploading: (uploading: boolean) => void;
 }
 
@@ -101,7 +103,9 @@ export const useAppStore = create<AppState>()(
       conversations: {},
       currentConversationId: null,
       isSidebarOpen: true,
+      isMobileMenuOpen: false,
       isUploading: false,
+      setMobileMenuOpen: (open) => set({ isMobileMenuOpen: open }),
       documentSearchQuery: '',
       setDocumentSearchQuery: (query) => set({ documentSearchQuery: query }),
       notifications: [],
@@ -136,123 +140,123 @@ export const useAppStore = create<AppState>()(
         return { documents, conversations };
       }),
 
-  addDocument: (doc) => set((state) => ({
-    documents: [doc, ...state.documents],
-    conversations: {
-      ...state.conversations,
-      [doc.id]: {
-        id: `conv-${doc.id}`,
-        documentId: doc.id,
-        messages: [],
-        createdAt: new Date(),
-      },
-    },
-  })),
-
-  updateDocument: (id, updates) => set((state) => {
-    const prev = state.documents.find((d) => d.id === id);
-    const documents = state.documents.map((doc) =>
-      doc.id === id ? { ...doc, ...updates } : doc
-    );
-    let notifications = state.notifications;
-    if (updates.status === 'DONE' && prev?.status !== 'DONE') {
-      notifications = [
-        {
-          id: `notif-${id}-${Date.now()}`,
-          documentId: id,
-          documentName: prev?.name ?? 'Document',
-          read: false,
-          createdAt: Date.now(),
+      addDocument: (doc) => set((state) => ({
+        documents: [doc, ...state.documents],
+        conversations: {
+          ...state.conversations,
+          [doc.id]: {
+            id: `conv-${doc.id}`,
+            documentId: doc.id,
+            messages: [],
+            createdAt: new Date(),
+          },
         },
-        ...notifications,
-      ];
-    }
-    return { documents, notifications };
-  }),
+      })),
 
-  removeDocument: (id) => set((state) => ({
-    documents: state.documents.filter((doc) => doc.id !== id),
-    conversations: Object.fromEntries(
-      Object.entries(state.conversations).filter(([key]) => key !== id)
-    ),
-    selectedDocumentId: state.selectedDocumentId === id ? null : state.selectedDocumentId,
-  })),
+      updateDocument: (id, updates) => set((state) => {
+        const prev = state.documents.find((d) => d.id === id);
+        const documents = state.documents.map((doc) =>
+          doc.id === id ? { ...doc, ...updates } : doc
+        );
+        let notifications = state.notifications;
+        if (updates.status === 'DONE' && prev?.status !== 'DONE') {
+          notifications = [
+            {
+              id: `notif-${id}-${Date.now()}`,
+              documentId: id,
+              documentName: prev?.name ?? 'Document',
+              read: false,
+              createdAt: Date.now(),
+            },
+            ...notifications,
+          ];
+        }
+        return { documents, notifications };
+      }),
 
-  selectDocument: (id) => set({ selectedDocumentId: id }),
+      removeDocument: (id) => set((state) => ({
+        documents: state.documents.filter((doc) => doc.id !== id),
+        conversations: Object.fromEntries(
+          Object.entries(state.conversations).filter(([key]) => key !== id)
+        ),
+        selectedDocumentId: state.selectedDocumentId === id ? null : state.selectedDocumentId,
+      })),
 
-  addMessage: (documentId, message) => set((state) => {
-    const conversation = state.conversations[documentId] || {
-      id: `conv-${documentId}`,
-      documentId,
-      messages: [],
-      createdAt: new Date(),
-    };
+      selectDocument: (id) => set({ selectedDocumentId: id }),
 
-    return {
-      conversations: {
-        ...state.conversations,
-        [documentId]: {
-          ...conversation,
-          messages: [...conversation.messages, message],
-        },
-      },
-    };
-  }),
+      addMessage: (documentId, message) => set((state) => {
+        const conversation = state.conversations[documentId] || {
+          id: `conv-${documentId}`,
+          documentId,
+          messages: [],
+          createdAt: new Date(),
+        };
 
-  updateMessage: (documentId, messageId, content) => set((state) => {
-    const conversation = state.conversations[documentId];
-    if (!conversation) return state;
+        return {
+          conversations: {
+            ...state.conversations,
+            [documentId]: {
+              ...conversation,
+              messages: [...conversation.messages, message],
+            },
+          },
+        };
+      }),
 
-    return {
-      conversations: {
-        ...state.conversations,
-        [documentId]: {
-          ...conversation,
-          messages: conversation.messages.map((msg) =>
-            msg.id === messageId ? { ...msg, content } : msg
-          ),
-        },
-      },
-    };
-  }),
+      updateMessage: (documentId, messageId, content) => set((state) => {
+        const conversation = state.conversations[documentId];
+        if (!conversation) return state;
 
-  setStreaming: (documentId, messageId, isStreaming) => set((state) => {
-    const conversation = state.conversations[documentId];
-    if (!conversation) return state;
+        return {
+          conversations: {
+            ...state.conversations,
+            [documentId]: {
+              ...conversation,
+              messages: conversation.messages.map((msg) =>
+                msg.id === messageId ? { ...msg, content } : msg
+              ),
+            },
+          },
+        };
+      }),
 
-    return {
-      conversations: {
-        ...state.conversations,
-        [documentId]: {
-          ...conversation,
-          messages: conversation.messages.map((msg) =>
-            msg.id === messageId ? { ...msg, isStreaming } : msg
-          ),
-        },
-      },
-    };
-  }),
+      setStreaming: (documentId, messageId, isStreaming) => set((state) => {
+        const conversation = state.conversations[documentId];
+        if (!conversation) return state;
 
-  setMessageSources: (documentId, messageId, sources) => set((state) => {
-    const conversation = state.conversations[documentId];
-    if (!conversation) return state;
+        return {
+          conversations: {
+            ...state.conversations,
+            [documentId]: {
+              ...conversation,
+              messages: conversation.messages.map((msg) =>
+                msg.id === messageId ? { ...msg, isStreaming } : msg
+              ),
+            },
+          },
+        };
+      }),
 
-    return {
-      conversations: {
-        ...state.conversations,
-        [documentId]: {
-          ...conversation,
-          messages: conversation.messages.map((msg) =>
-            msg.id === messageId ? { ...msg, sources } : msg
-          ),
-        },
-      },
-    };
-  }),
+      setMessageSources: (documentId, messageId, sources) => set((state) => {
+        const conversation = state.conversations[documentId];
+        if (!conversation) return state;
 
-  toggleSidebar: () => set((state) => ({ isSidebarOpen: !state.isSidebarOpen })),
-  setSidebarOpen: (open) => set({ isSidebarOpen: open }),
-  setUploading: (uploading) => set({ isUploading: uploading }),
+        return {
+          conversations: {
+            ...state.conversations,
+            [documentId]: {
+              ...conversation,
+              messages: conversation.messages.map((msg) =>
+                msg.id === messageId ? { ...msg, sources } : msg
+              ),
+            },
+          },
+        };
+      }),
+
+      toggleSidebar: () => set((state) => ({ isSidebarOpen: !state.isSidebarOpen })),
+      setSidebarOpen: (open) => set({ isSidebarOpen: open }),
+      setUploading: (uploading) => set({ isUploading: uploading }),
     }),
     {
       name: AUTH_STORAGE_KEY,

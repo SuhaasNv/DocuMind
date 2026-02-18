@@ -23,7 +23,8 @@ const ChatInput = ({ onSend, isLoading = false, disabled = false }: ChatInputPro
   };
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
-    if (e.key === 'Enter' && !e.shiftKey) {
+    // Submit on Enter (without Shift) OR Ctrl/Cmd + Enter
+    if ((e.key === 'Enter' && !e.shiftKey) || (e.key === 'Enter' && (e.metaKey || e.ctrlKey))) {
       e.preventDefault();
       handleSubmit(e);
     }
