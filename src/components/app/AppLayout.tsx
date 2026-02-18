@@ -1,12 +1,14 @@
 import { useState, useEffect } from 'react';
 import { Outlet } from 'react-router-dom';
 import { motion } from 'framer-motion';
+import { Upload } from 'lucide-react';
 import Sidebar from '@/components/app/Sidebar';
 import SidebarContent from '@/components/app/SidebarContent';
 import { Sheet, SheetContent } from '@/components/ui/sheet';
 import { useAppStore } from '@/stores/useAppStore';
 import { usePreferencesStore } from '@/stores/usePreferencesStore';
 import { useIsMobile, useIsDesktop } from '@/hooks/use-mobile';
+import { useDragDrop } from '@/hooks/use-drag-drop';
 
 /**
  * Prevents any authenticated API call (SSE, chat, documents) from running before
@@ -21,6 +23,7 @@ const AppLayout = () => {
   const persist = useAppStore.persist;
   const { mobileMenuOpen, setMobileMenuOpen, setSidebarOpen } = useAppStore();
   const enableAnimations = usePreferencesStore((s) => s.enableAnimations);
+  const { overlayRef } = useDragDrop();
 
   useEffect(() => {
     if (persist.hasHydrated()) {
@@ -57,8 +60,19 @@ const AppLayout = () => {
     : {};
 
   return (
-    <div className="flex h-screen overflow-hidden bg-background">
+    <div className="flex h-screen overflow-hidden bg-background relative">
       <div className="noise-overlay" />
+
+      {/* Drag & Drop Overlay */}
+      <div
+        ref={overlayRef}
+        className="absolute inset-0 z-[60] bg-background/80 backdrop-blur-sm hidden flex-col items-center justify-center transition-opacity duration-200 opacity-0"
+      >
+        <div className="bg-primary/10 p-12 rounded-3xl border-4 border-primary border-dashed animate-bounce">
+          <Upload className="w-24 h-24 text-primary mx-auto mb-6" />
+          <h2 className="text-3xl font-bold text-primary text-center">Drop PDF to Upload</h2>
+        </div>
+      </div>
 
       {/* Mobile: sidebar as slide-in drawer from left */}
       {isMobile && (
