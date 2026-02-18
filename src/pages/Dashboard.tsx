@@ -4,6 +4,7 @@ import { FileText } from 'lucide-react';
 import Header from '@/components/app/Header';
 import UploadArea from '@/components/app/UploadArea';
 import DocumentCard from '@/components/app/DocumentCard';
+import { EmptyDocuments, EmptySearch } from '@/components/app/EmptyStates';
 import { useAppStore, type Document } from '@/stores/useAppStore';
 import { getApiBaseUrl } from '@/lib/api';
 
@@ -25,8 +26,8 @@ const Dashboard = () => {
 
   const filteredDocuments = documentSearchQuery.trim()
     ? documents.filter((doc) =>
-        doc.name.toLowerCase().includes(documentSearchQuery.trim().toLowerCase())
-      )
+      doc.name.toLowerCase().includes(documentSearchQuery.trim().toLowerCase())
+    )
     : documents;
 
   // Load documents from backend so sidebar and chat use real document IDs.
@@ -72,23 +73,11 @@ const Dashboard = () => {
             </div>
 
             {filteredDocuments.length === 0 ? (
-              <motion.div
-                initial={{ opacity: 0, y: 20 }}
-                animate={{ opacity: 1, y: 0 }}
-                className="text-center py-16"
-              >
-                <div className="w-20 h-20 rounded-2xl bg-muted/50 flex items-center justify-center mx-auto mb-6">
-                  <FileText className="w-10 h-10 text-muted-foreground" />
-                </div>
-                <h3 className="text-lg font-medium mb-2">
-                  {documentSearchQuery.trim() ? 'No documents match your search' : 'You don\'t have any documents yet'}
-                </h3>
-                <p className="text-muted-foreground">
-                  {documentSearchQuery.trim()
-                    ? 'Try a different search term or clear the search to see all documents.'
-                    : 'Upload your first PDF above. We\'ll process it in the background and you can chat with it in under a minute.'}
-                </p>
-              </motion.div>
+              documentSearchQuery.trim() ? (
+                <EmptySearch />
+              ) : (
+                <EmptyDocuments />
+              )
             ) : (
               <div className="space-y-4">
                 <AnimatePresence mode="popLayout">

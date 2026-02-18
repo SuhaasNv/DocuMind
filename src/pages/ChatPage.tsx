@@ -6,7 +6,7 @@ import { Button } from '@/components/ui/button';
 import Header from '@/components/app/Header';
 import MessageBubble from '@/components/chat/MessageBubble';
 import ChatInput from '@/components/chat/ChatInput';
-import EmptyChat from '@/components/chat/EmptyChat';
+import { EmptyChatState } from '@/components/app/EmptyStates';
 import TypingIndicator from '@/components/chat/TypingIndicator';
 import { useAppStore, Message } from '@/stores/useAppStore';
 import { usePreferencesStore } from '@/stores/usePreferencesStore';
@@ -247,7 +247,7 @@ const ChatPage = () => {
           className="flex-1 overflow-y-auto min-h-0"
         >
           {messages.length === 0 ? (
-            <EmptyChat onPromptClick={handleSendMessage} />
+            <EmptyChatState onPromptClick={handleSendMessage} />
           ) : (
             <div className="max-w-4xl mx-auto px-6 py-6 space-y-6">
               <AnimatePresence mode="popLayout">
