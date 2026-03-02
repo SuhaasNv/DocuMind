@@ -7,7 +7,6 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { useAppStore } from '@/stores/useAppStore';
 import { getApiBaseUrl, getApiErrorMessage } from '@/lib/api';
-import Navbar from '@/components/landing/Navbar';
 
 interface AuthResponse {
   user: { id: string; email: string; name: string };
@@ -84,7 +83,6 @@ const Register = () => {
   return (
     <div className="min-h-screen bg-background">
       <div className="noise-overlay" />
-      <Navbar />
       <div className="pt-28 min-h-screen flex items-center justify-center relative overflow-hidden">
         {/* Background effects */}
         <div className="absolute inset-0 hero-gradient opacity-50" />

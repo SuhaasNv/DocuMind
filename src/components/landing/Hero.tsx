@@ -1,4 +1,5 @@
-import { motion } from 'framer-motion';
+import { motion, useMotionValue, useSpring } from 'framer-motion';
+import { useEffect, useRef } from 'react';
 import { ArrowRight, Sparkles } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
@@ -9,10 +10,48 @@ import { useAppStore } from '@/stores/useAppStore';
 
 const Hero = () => {
   const isAuthenticated = useAppStore((s) => s.isAuthenticated);
+  const sectionRef = useRef<HTMLElement>(null);
+
+  const rawX = useMotionValue(-200);
+  const rawY = useMotionValue(-200);
+
+  const blobX = useSpring(rawX, { stiffness: 60, damping: 20, mass: 1 });
+  const blobY = useSpring(rawY, { stiffness: 60, damping: 20, mass: 1 });
+
+  useEffect(() => {
+    const el = sectionRef.current;
+    if (!el) return;
+
+    const onMove = (e: MouseEvent) => {
+      const rect = el.getBoundingClientRect();
+      rawX.set(e.clientX - rect.left);
+      rawY.set(e.clientY - rect.top);
+    };
+
+    el.addEventListener('mousemove', onMove);
+    return () => el.removeEventListener('mousemove', onMove);
+  }, [rawX, rawY]);
 
   return (
-    <section className="relative min-h-screen flex items-center justify-center overflow-hidden bg-black pt-16">
+    <section ref={sectionRef} className="relative min-h-screen flex items-center justify-center overflow-hidden bg-black pt-20">
       <Card className="w-full min-h-screen bg-black/[0.96] relative overflow-hidden border-0 rounded-none">
+        {/* Mouse-following gradient blob */}
+        <motion.div
+          className="pointer-events-none absolute z-0"
+          style={{
+            x: blobX,
+            y: blobY,
+            translateX: '-50%',
+            translateY: '-50%',
+            width: 520,
+            height: 520,
+            borderRadius: '9999px',
+            background:
+              'radial-gradient(circle at center, rgba(150,150,170,0.18) 0%, rgba(100,120,140,0.10) 40%, transparent 70%)',
+            filter: 'blur(48px)',
+          }}
+        />
+
         <Spotlight
           className="-top-40 left-0 md:left-60 md:-top-20"
           fill="white"

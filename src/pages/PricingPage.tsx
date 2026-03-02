@@ -1,7 +1,5 @@
 import { motion } from 'framer-motion';
 import { Link } from 'react-router-dom';
-import Navbar from '@/components/landing/Navbar';
-import Footer from '@/components/landing/Footer';
 import { Button } from '@/components/ui/button';
 import { Check } from 'lucide-react';
 
@@ -72,7 +70,6 @@ const PricingPage = () => {
   return (
     <div className="min-h-screen bg-background">
       <div className="noise-overlay" />
-      <Navbar />
 
       <motion.main
         initial={{ opacity: 0 }}
@@ -146,7 +143,6 @@ const PricingPage = () => {
         </div>
       </motion.main>
 
-      <Footer />
     </div>
   );
 };

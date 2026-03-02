@@ -22,6 +22,7 @@ import AppLayout from "./components/app/AppLayout";
 import BackendHealthBanner from "./components/app/BackendHealthBanner";
 import ProtectedRoute from "./components/app/ProtectedRoute";
 import ScrollToTop from "./components/ScrollToTop";
+import PublicLayout from "./components/landing/PublicLayout";
 
 const queryClient = new QueryClient();
 
@@ -40,18 +41,20 @@ const App = () => (
       >
         <ScrollToTop />
         <Routes>
-          {/* Public routes */}
-          <Route path="/" element={<Index />} />
-          <Route path="/login" element={<Login />} />
-          <Route path="/register" element={<Register />} />
-          <Route path="/features" element={<FeaturesPage />} />
-          <Route path="/pricing" element={<PricingPage />} />
-          <Route path="/docs" element={<DocsPage />} />
-          <Route path="/about" element={<AboutPage />} />
-          <Route path="/how-it-works" element={<HowItWorksPage />} />
-          <Route path="/privacy" element={<PrivacyPage />} />
-          <Route path="/terms" element={<TermsPage />} />
-          <Route path="/contact" element={<ContactPage />} />
+          {/* All public routes share one persistent layout so Navbar never remounts */}
+          <Route element={<PublicLayout />}>
+            <Route path="/" element={<Index />} />
+            <Route path="/features" element={<FeaturesPage />} />
+            <Route path="/pricing" element={<PricingPage />} />
+            <Route path="/docs" element={<DocsPage />} />
+            <Route path="/about" element={<AboutPage />} />
+            <Route path="/how-it-works" element={<HowItWorksPage />} />
+            <Route path="/privacy" element={<PrivacyPage />} />
+            <Route path="/terms" element={<TermsPage />} />
+            <Route path="/contact" element={<ContactPage />} />
+            <Route path="/login" element={<Login />} />
+            <Route path="/register" element={<Register />} />
+          </Route>
           
           {/* App routes (protected; sidebar layout) */}
           <Route path="/app" element={<ProtectedRoute><AppLayout /></ProtectedRoute>}>

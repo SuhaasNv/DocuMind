@@ -1,6 +1,4 @@
 import { motion } from 'framer-motion';
-import Navbar from '@/components/landing/Navbar';
-import Footer from '@/components/landing/Footer';
 import { Upload, Zap, MessageSquare, Shield, Brain, Clock } from 'lucide-react';
 
 const features = [
@@ -59,7 +57,6 @@ const FeaturesPage = () => {
   return (
     <div className="min-h-screen bg-background">
       <div className="noise-overlay" />
-      <Navbar />
 
       <motion.main
         initial={{ opacity: 0 }}
@@ -107,7 +104,6 @@ const FeaturesPage = () => {
         </div>
       </motion.main>
 
-      <Footer />
     </div>
   );
 };
