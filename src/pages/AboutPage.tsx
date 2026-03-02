@@ -1,6 +1,4 @@
 import { motion } from 'framer-motion';
-import Navbar from '@/components/landing/Navbar';
-import Footer from '@/components/landing/Footer';
 import {
   User,
   Cpu,
@@ -99,7 +97,6 @@ const AboutPage = () => {
   return (
     <div className="min-h-screen bg-background">
       <div className="noise-overlay" />
-      <Navbar />
 
       <motion.main
         initial={{ opacity: 0 }}
@@ -259,7 +256,6 @@ const AboutPage = () => {
         </div>
       </motion.main>
 
-      <Footer />
     </div>
   );
 };

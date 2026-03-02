@@ -1,6 +1,4 @@
 import { motion } from 'framer-motion';
-import Navbar from '@/components/landing/Navbar';
-import Footer from '@/components/landing/Footer';
 import { Mail, Phone, MapPin, Clock, MessageCircle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Link } from 'react-router-dom';
@@ -12,7 +10,6 @@ const ContactPage = () => {
   return (
     <div className="min-h-screen bg-background">
       <div className="noise-overlay" />
-      <Navbar />
 
       <motion.main
         initial={{ opacity: 0 }}
@@ -122,7 +119,6 @@ const ContactPage = () => {
         </div>
       </motion.main>
 
-      <Footer />
     </div>
   );
 };

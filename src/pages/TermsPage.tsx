@@ -1,14 +1,11 @@
 import { motion } from 'framer-motion';
 import { Link } from 'react-router-dom';
-import Navbar from '@/components/landing/Navbar';
-import Footer from '@/components/landing/Footer';
 import { FileText } from 'lucide-react';
 
 const TermsPage = () => {
   return (
     <div className="min-h-screen bg-background">
       <div className="noise-overlay" />
-      <Navbar />
 
       <motion.main
         initial={{ opacity: 0 }}
@@ -75,7 +72,6 @@ const TermsPage = () => {
         </div>
       </motion.main>
 
-      <Footer />
     </div>
   );
 };
