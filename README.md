@@ -1,213 +1,93 @@
-# DocuMind (Insight Garden)
+# DocuMind
 
-**DocuMind** is a document-centric RAG (Retrieval-Augmented Generation) SaaS application. Upload PDFs, process them into searchable chunks with vector embeddings, and chat with your documents using a local or cloud LLM—with streaming responses and source attribution.
+> **AI-powered document intelligence.** Upload PDFs, chat with your documents, and get accurate answers grounded in your content—powered by RAG, vector search, and streaming AI.
 
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.x-3178C6?logo=typescript)](https://www.typescriptlang.org/)
 [![React](https://img.shields.io/badge/React-18-61DAFB?logo=react)](https://react.dev/)
 [![NestJS](https://img.shields.io/badge/NestJS-11-E0234E?logo=nestjs)](https://nestjs.com/)
+[![Vite](https://img.shields.io/badge/Vite-5-646CFF?logo=vite)](https://vitejs.dev/)
 [![PostgreSQL](https://img.shields.io/badge/PostgreSQL-pgvector-4169E1?logo=postgresql)](https://www.postgresql.org/)
 [![Redis](https://img.shields.io/badge/Redis-7-DC382D?logo=redis)](https://redis.io/)
 
-**Production stack:** Frontend → [Vercel](https://vercel.com/) · Backend → [Railway](https://railway.app/) · Database → [Supabase](https://supabase.com/) · Redis → [Upstash](https://upstash.com/)
-
----
-
-## Table of Contents
-
-- [Features](#features)
-- [Tech Stack](#tech-stack)
-- [Architecture](#architecture)
-- [Prerequisites](#prerequisites)
-- [Quick Start](#quick-start)
-- [Deployment (Production)](#deployment-production)
-- [Demo Walkthrough](#demo-walkthrough)
-- [Known Limitations](#known-limitations)
-- [Environment Variables](#environment-variables)
-- [Project Structure](#project-structure)
-- [Available Scripts](#available-scripts)
-- [Documentation](#documentation)
-- [Contributing](#contributing)
-- [License](#license)
+**Production stack:** Frontend → [Vercel](https://vercel.com/) · Backend → [Railway](https://railway.app/) · Database → [Supabase](https://supabase.com/) · Redis → [Upstash](https://upstash.com/) · LLM → [Google Gemini](https://ai.google.dev/)
 
 ---
 
 ## Features
 
-- **User auth** — Register, login, JWT-based sessions with optional persistence (localStorage).
-- **Document upload** — PDF upload (drag-and-drop or file picker), 50MB limit, server-side validation.
-- **Async processing** — BullMQ + Redis job queue: extract text → chunk → embed → store in pgvector.
-- **RAG chat** — Per-document chat with retrieval over your chunks; configurable top-k and context caps.
-- **Streaming** — SSE streaming for chat (Ollama); token-by-token display with throttled UI updates.
-- **Source attribution** — Answers reference chunk indices; optional “show sources” in settings.
-- **Settings** — Account info, preferences (auto-scroll, show sources, animations), system info (backend URL, version).
-- **Health & errors** — Backend health check on app load; clear error messages for auth, network, and API failures.
+| Feature | Description |
+|--------|--------------|
+| **PDF Upload** | Drag-and-drop or file picker. 50MB limit. Server-side validation. |
+| **Real-time Processing** | BullMQ + Redis job queue. Extract text → chunk → embed → store in pgvector. Live progress updates. |
+| **RAG Chat** | Per-document chat with retrieval over your chunks. Configurable top-k and context caps. Answers cite your document, not generic knowledge. |
+| **Streaming Responses** | SSE streaming for chat. Token-by-token display with throttled UI updates. |
+| **Source Attribution** | Optional “show sources” in settings. Answers reference chunk indices. |
+| **User Auth** | Register, login, JWT-based sessions with optional persistence (localStorage). |
+| **Settings & Preferences** | Account info, auto-scroll, show sources, animations, system info (backend URL, version). |
+| **Health & Errors** | Backend health check on app load. Clear error messages for auth, network, and API failures. |
+| **Mobile-responsive UI** | Responsive landing, tubelight navbar, sheet-based mobile nav. Works on all screen sizes. |
+| **Modern Landing** | Spline 3D scene, spotlight effects, mouse-following blob, Framer Motion animations. |
 
 ---
 
 ## Tech Stack
 
-### Frontend (repo root)
+### Frontend
 
-| Layer        | Technology |
-|-------------|------------|
-| Build       | [Vite](https://vitejs.dev/) 5 |
-| Language    | [TypeScript](https://www.typescriptlang.org/) 5 |
-| UI          | [React](https://react.dev/) 18 |
-| Routing     | [React Router](https://reactrouter.com/) 6 |
-| State       | [Zustand](https://zustand-demo.pmnd.rs/) 5 (auth, documents, chat, preferences; persist for auth/prefs) |
-| Styling     | [Tailwind CSS](https://tailwindcss.com/) 3, [shadcn/ui](https://ui.shadcn.com/) (Radix primitives) |
-| Animations  | [Framer Motion](https://www.framer.com/motion/) |
-| Data fetch  | Native `fetch`; SSE via `fetch` + `ReadableStream` for streaming chat |
-| Forms       | React Hook Form, Zod (optional) |
-| Markdown    | react-markdown (chat messages) |
-| Testing     | Vitest, Testing Library |
+| Layer | Technology |
+|-------|------------|
+| Build | [Vite](https://vitejs.dev/) 5 |
+| UI | [React](https://react.dev/) 18, [TypeScript](https://www.typescriptlang.org/) 5 |
+| Routing | [React Router](https://reactrouter.com/) 6 |
+| State | [Zustand](https://zustand-demo.pmnd.rs/) 5 (auth, documents, chat, preferences; persist for auth/prefs) |
+| Styling | [Tailwind CSS](https://tailwindcss.com/) 3, [shadcn/ui](https://ui.shadcn.com/) (Radix primitives) |
+| Animations | [Framer Motion](https://www.framer.com/motion/) |
+| 3D | [Spline](https://spline.design/) (React runtime) |
+| Data | Native `fetch`; SSE via `fetch` + `ReadableStream` for streaming chat |
+| Forms | React Hook Form, Zod |
+| Markdown | react-markdown (chat messages) |
+| Charts | Recharts |
+| Testing | Vitest, Testing Library |
 
-### Backend (`backend/`)
+### Backend
 
-| Layer        | Technology |
-|-------------|------------|
-| Runtime     | [Node.js](https://nodejs.org/) (LTS) |
-| Framework   | [NestJS](https://nestjs.com/) 11 |
-| Language    | TypeScript 5 |
-| API         | REST (Express); SSE for `/documents/:id/chat/stream` |
-| Auth        | JWT (Passport + passport-jwt); bcrypt for passwords |
-| Validation  | class-validator, class-transformer; global ValidationPipe |
-| ORM / DB    | [Prisma](https://www.prisma.io/) 7 (PostgreSQL) |
-| Vector DB  | [pgvector](https://github.com/pgvector/pgvector) (extension in Postgres) |
-| Queue       | [BullMQ](https://docs.bullmq.io/) + Redis |
-| File parse  | pdf-parse (PDF text extraction) |
-| Embeddings  | Configurable: stub (dev) or OpenAI |
-| LLM         | Configurable: stub, [Ollama](https://ollama.ai/) (streaming), or OpenAI (non-streaming) |
-| Document status | Polling (frontend polls GET /documents/:id every 2s for in-progress docs) |
-| Testing     | Jest, Supertest (e2e) |
+| Layer | Technology |
+|-------|------------|
+| Framework | [NestJS](https://nestjs.com/) 11 |
+| API | REST (Express); SSE for `/documents/:id/chat/stream` |
+| Auth | JWT (Passport + passport-jwt); bcrypt for passwords |
+| Validation | class-validator, class-transformer; global ValidationPipe |
+| ORM / DB | [Prisma](https://www.prisma.io/) 7 (PostgreSQL) |
+| Vector DB | [pgvector](https://github.com/pgvector/pgvector) (extension in Postgres) |
+| Queue | [BullMQ](https://docs.bullmq.io/) + Redis |
+| File Parse | pdf-parse (PDF text extraction) |
+| Embeddings | Configurable (stub or OpenAI) |
+| LLM | **Gemini** (default, streaming), Ollama, or OpenAI |
 
 ### Infrastructure
 
-| Component     | Local development              | Production (recommended)                    |
-|---------------|--------------------------------|---------------------------------------------|
-| **Frontend**  | Vite dev server (host)         | [Vercel](https://vercel.com/)               |
-| **Backend**   | NestJS on host                 | [Railway](https://railway.app/)             |
-| **Database**  | PostgreSQL 16 + pgvector (Docker) | [Supabase](https://supabase.com/) (PostgreSQL + pgvector) |
-| **Cache/Queue** | Redis 7 (Docker)             | [Upstash](https://upstash.com/) (Redis)     |
-
-**Local:** Docker (`docker-compose`) runs Postgres and Redis only; backend and frontend run on the host.  
-**Production:** Frontend on Vercel, backend on Railway, database on Supabase, Redis (BullMQ) on Upstash. No Docker in production.
-
----
-
-## Architecture
-
-### High-level flow
-
-```
-┌─────────────────────────────────────────────────────────────────────────────┐
-│                              Frontend (Vite + React)                         │
-│  ┌──────────┐  ┌─────────────┐  ┌─────────────┐  ┌──────────────────────┐ │
-│  │ Auth      │  │ Documents   │  │ Chat (SSE)  │  │ Settings / Prefs     │ │
-│  │ Login/Reg │  │ Upload/List │  │ Stream      │  │ Zustand persist      │ │
-│  └─────┬─────┘  └──────┬──────┘  └──────┬──────┘  └──────────────────────┘ │
-│        │               │                │                                   │
-│        │  JWT in Authorization header (or ?token= for SSE)                    │
-└────────┼───────────────┼────────────────┼───────────────────────────────────┘
-         │               │                │
-         ▼               ▼                ▼
-┌─────────────────────────────────────────────────────────────────────────────┐
-│                              Backend (NestJS)                                 │
-│  ┌──────────┐  ┌─────────────┐  ┌─────────────────────────────────────────┐│
-│  │ Auth     │  │ Documents   │  │ RAG: Retrieval → Prompt → LLM → Answer   ││
-│  │ JWT Guard│  │ Upload CRUD │  │ (streaming: SSE delta + done events)     ││
-│  └──────────┘  └──────┬──────┘  └─────────────────────────────────────────┘│
-│                       │                                                      │
-│                       ▼                                                      │
-│  ┌─────────────────────────────────────────────────────────────────────────┐│
-│  │ Jobs (BullMQ): PDF → text → chunk → embed → DocumentChunk (pgvector)    ││
-│  └─────────────────────────────────────────────────────────────────────────┘│
-└────────┬──────────────────────────────┬─────────────────────────────────────┘
-         │                              │
-         ▼                              ▼
-┌─────────────────┐            ┌─────────────────┐
-│ PostgreSQL      │            │ Redis           │
-│ + pgvector      │            │ (BullMQ)        │
-└─────────────────┘            └─────────────────┘
-```
-
-**Production:** Same flow; frontend on Vercel, backend on Railway, PostgreSQL on Supabase (pgvector), Redis on Upstash.
-
-### Data flow (simplified)
-
-1. **Upload** — Client `POST /documents/upload` (multipart) → backend creates `Document` (PENDING), writes PDF to `uploads/<id>.pdf`, enqueues job.
-2. **Process** — Worker: read PDF → extract text → chunk (fixed size + overlap) → embed (stub or OpenAI) → insert into `document_chunks` (pgvector) → set document status DONE (or FAILED).
-3. **Chat** — Client `POST /documents/:id/chat/stream` with `{ question }` → backend: ownership + DONE check → embed query → similarity search (pgvector) → build RAG prompt → stream LLM tokens (Ollama) → SSE `delta` + `done` (with sources).
-
-### Data-flow diagram (end-to-end)
-
-```
-  User                    Frontend                    Backend                     Storage
-   │                         │                           │                            │
-   │  1. Upload PDF          │                           │                            │
-   │────────────────────────>│  POST /documents/upload    │                            │
-   │                         │──────────────────────────>│  Create Document (PENDING)  │
-   │                         │                           │  Write file → uploads/      │
-   │                         │                           │  Enqueue job ──────────────┼──> Redis (BullMQ)
-   │                         │<──────────────────────────│  Return document           │
-   │                         │                           │                            │
-   │                         │                     [Worker picks job]                   │
-   │                         │                           │  Read PDF, chunk, embed     │
-   │                         │                           │  INSERT document_chunks ───┼──> PostgreSQL (pgvector)
-   │                         │                           │  UPDATE document → DONE     │
-   │                         │                           │                            │
-   │  2. Poll status (every 2s until DONE)                │                            │
-   │                         │  GET /documents/:id       │                            │
-   │                         │──────────────────────────>│                            │
-   │                         │<──────────────────────────│  status, progress          │
-   │                         │                           │                            │
-   │  3. Ask question        │                           │                            │
-   │────────────────────────>│  POST .../chat/stream     │                            │
-   │                         │  { question }             │  Embed query               │
-   │                         │──────────────────────────>│  Similarity search ────────┼──> pgvector
-   │                         │                           │  Build prompt, stream LLM   │
-   │                         │  SSE: event: delta        │<──────────────────────────│  (Ollama/OpenAI)
-   │                         │<──────────────────────────│  event: done { sources }   │
-   │  Streamed answer        │                           │                            │
-   │<────────────────────────│                           │                            │
-```
-
-### Backend module boundaries
-
-| Module     | Responsibility |
-|-----------|----------------|
-| `auth`    | Register, login, JWT issue/validate; no document logic. |
-| `documents`| Upload, CRUD, ownership; delegates RAG to `rag-orchestrator` and retrieval to `retrieval`. |
-| `chunks`  | Insert/delete document chunks (raw SQL for vector column). |
-| `embedding`| Single provider (stub or OpenAI); consistent dimension. |
-| `rag`     | Prompt building, LLM complete/stream (stub, Ollama, OpenAI). |
-| `jobs`    | BullMQ processor: PDF → text → chunk → embed → chunks. |
-| `health`  | Public `GET /health` for connectivity checks. |
-
-### Frontend structure
-
-- **Routes:** Public (/, /login, /register, landing); app layout (/app, /app/settings) and chat (/chat/:documentId) share sidebar layout.
-- **State:** Zustand: one store for auth + documents + conversations + UI; separate store for preferences. Auth (and prefs) persisted; documents/chat refetched on load.
-- **API:** Single `getApiBaseUrl()` / `getApiBaseUrlOrThrow()`; all fetch and SSE use it. No token refresh; 401 handled per request.
-
----
-
-## Prerequisites
-
-- **Node.js** 18+ (LTS recommended)
-- **npm** (or pnpm/yarn)
-- **Docker** and **Docker Compose** (for Postgres and Redis only)
-- **Ollama** (optional; for local LLM streaming). Install from [ollama.ai](https://ollama.ai/)
+| Component | Local | Production |
+|-----------|-------|------------|
+| **Frontend** | Vite dev server (port 8080) | [Vercel](https://vercel.com/) |
+| **Backend** | NestJS (port 3000) | [Railway](https://railway.app/) |
+| **Database** | PostgreSQL 16 + pgvector (Docker) | [Supabase](https://supabase.com/) |
+| **Cache/Queue** | Redis 7 (Docker) | [Upstash](https://upstash.com/) |
 
 ---
 
 ## Quick Start
 
+### Prerequisites
+
+- **Node.js** 18+ (LTS recommended)
+- **Docker** and **Docker Compose** (for Postgres and Redis)
+- **Gemini API key** (optional for local LLM; get one at [Google AI Studio](https://aistudio.google.com/apikey))
+
 ### 1. Clone and install
 
 ```bash
-git clone https://github.com/YOUR_ORG/insight-garden.git
-cd insight-garden
+git clone https://github.com/SuhaasNv/DocuMind.git
+cd DocuMind
 npm install
 ```
 
@@ -219,29 +99,43 @@ From the **repo root**:
 docker compose up -d
 ```
 
-- **PostgreSQL** (pgvector): port `5432`, user `user`, password `password`, database `insight_garden`.
-- **Redis**: port `6379`.
+- **PostgreSQL** (pgvector): port `5432`, user `user`, password `password`, database `insight_garden`
+- **Redis**: port `6379`
 
-### 3. Backend: env, migrate, run
+### 3. Backend setup
 
 ```bash
 cd backend
 cp .env.example .env
-# Edit .env: set JWT_SECRET (e.g. openssl rand -base64 32), DATABASE_URL (local Postgres or Supabase with ?sslmode=require),
-# and Redis: either REDIS_HOST=localhost, REDIS_PORT=6379 (Docker) or REDIS_URL (Upstash rediss://...).
+```
+
+Edit `backend/.env`:
+
+| Variable | Value |
+|----------|-------|
+| `DATABASE_URL` | `postgresql://user:password@localhost:5432/insight_garden` (or your Supabase URL) |
+| `JWT_SECRET` | Long random string (e.g. `openssl rand -base64 32`) |
+| `REDIS_HOST` | `localhost` |
+| `REDIS_PORT` | `6379` |
+| `CORS_ORIGIN` | `http://localhost:8080` |
+| `GEMINI_API_KEY` | Your Gemini API key (for RAG chat) |
+
+Then:
+
+```bash
 npx prisma migrate deploy
 npm run dev
 ```
 
-Backend runs at **http://localhost:3000**. It must be run from `backend/` so `process.cwd()` is correct for `.env` and `uploads/`.
+Backend runs at **http://localhost:3000**.
 
-### 4. Frontend: env and run
+### 4. Frontend setup
 
 From the **repo root** (new terminal):
 
 ```bash
 cp .env.example .env
-# Set VITE_API_URL=http://localhost:3000 (optional if same host/port)
+# Ensure VITE_API_URL=http://localhost:3000
 npm run dev
 ```
 
@@ -249,98 +143,50 @@ Frontend runs at **http://localhost:8080**.
 
 ### 5. Use the app
 
-1. Open **http://localhost:8080**.
-2. Register or log in.
-3. Upload a PDF from the Documents page.
-4. Wait for processing (progress bar); when status is “Ready”, open the document chat and ask questions.
-
-For a step-by-step checklist, see [docs/LOCAL-DEV-SANITY-CHECKLIST.md](docs/LOCAL-DEV-SANITY-CHECKLIST.md).
+1. Open **http://localhost:8080**
+2. Register or log in
+3. Upload a PDF from the Documents page
+4. Wait for processing (progress bar); when status is **Ready**, open the document chat and ask questions
 
 ---
 
-## Deployment (Production)
+## Architecture
 
-Production setup: **Frontend** on Vercel, **Backend** on Railway, **Database** on Supabase, **Redis** on Upstash.
+```
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                         Frontend (Vite + React)                              │
+│  ┌──────────┐  ┌─────────────┐  ┌─────────────┐  ┌──────────────────────┐  │
+│  │ Auth     │  │ Documents   │  │ Chat (SSE)   │  │ Settings / Prefs     │  │
+│  │ JWT      │  │ Upload/List │  │ Streaming    │  │ Zustand persist      │  │
+│  └────┬─────┘  └──────┬──────┘  └──────┬──────┘  └──────────────────────┘  │
+└───────┼───────────────┼────────────────┼────────────────────────────────────┘
+        │               │                │
+        ▼               ▼                ▼
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                         Backend (NestJS)                                     │
+│  ┌──────────┐  ┌─────────────┐  ┌─────────────────────────────────────────┐ │
+│  │ Auth     │  │ Documents   │  │ RAG: Retrieval → Prompt → Gemini → Answer │ │
+│  │ JWT      │  │ Upload CRUD │  │ (streaming: SSE delta + done events)     │ │
+│  └──────────┘  └──────┬──────┘  └─────────────────────────────────────────┘ │
+│                       │                                                      │
+│                       ▼                                                      │
+│  ┌─────────────────────────────────────────────────────────────────────────┐ │
+│  │ Jobs (BullMQ): PDF → text → chunk → embed → DocumentChunk (pgvector)    │ │
+│  └─────────────────────────────────────────────────────────────────────────┘ │
+└───────┬──────────────────────────────┬──────────────────────────────────────┘
+        │                              │
+        ▼                              ▼
+┌─────────────────┐            ┌─────────────────┐
+│ PostgreSQL      │            │ Redis           │
+│ + pgvector      │            │ (BullMQ)        │
+└─────────────────┘            └─────────────────┘
+```
 
-### 1. Database — Supabase
+### Data flow
 
-1. Create a project at [Supabase](https://supabase.com/).
-2. **Settings** → **Database** → copy the **connection string** (URI). Replace `[YOUR-PASSWORD]` with your database password.
-3. Add `?sslmode=require` at the end (e.g. `postgresql://postgres:PASSWORD@db.xxx.supabase.co:5432/postgres?sslmode=require`).
-4. Run migrations against this DB (from your machine with `DATABASE_URL` in `backend/.env` pointing to Supabase):
-   ```bash
-   cd backend
-   npx prisma migrate deploy
-   ```
-
-### 2. Redis — Upstash
-
-1. Create a Redis database at [Upstash](https://upstash.com/).
-2. In the Upstash dashboard, open your Redis database. Under **Redis Connect** / **Endpoint**, copy the **Redis URL** (TCP), e.g. `rediss://default:PASSWORD@xxx.upstash.io:6379`.
-
-### 3. Backend — Railway
-
-1. Create a project at [Railway](https://railway.app/) and add a **service** from your repo (backend: e.g. root or `backend/` with build command and start command).
-2. In the backend service → **Variables**, set:
-
-   | Variable        | Description |
-   |-----------------|-------------|
-   | `DATABASE_URL`  | Supabase connection string with `?sslmode=require`. |
-   | `JWT_SECRET`    | Long random string (e.g. `openssl rand -base64 32`). |
-   | `CORS_ORIGIN`   | Your frontend origin (e.g. `https://your-app.vercel.app`). |
-   | `REDIS_URL`     | Upstash Redis URL (`rediss://default:...@...upstash.io:6379`). |
-   | `GEMINI_API_KEY`| (Optional) For RAG/chat if using Gemini. |
-
-3. **Settings** → **Networking** → **Generate Domain** so the backend has a public URL (e.g. `https://your-backend.up.railway.app`).
-4. Deploy. Check logs for “Application is running” and no `[FATAL]` env errors.
-
-### 4. Frontend — Vercel
-
-1. Import your repo at [Vercel](https://vercel.com/) and configure the frontend (root or `./` with build command `npm run build`, output directory `dist`).
-2. **Settings** → **Environment Variables** → add:
-
-   | Variable         | Value |
-   |------------------|--------|
-   | `VITE_API_URL`   | Your Railway backend URL (e.g. `https://your-backend.up.railway.app`). No trailing slash. |
-
-3. **Redeploy** the frontend so the build picks up `VITE_API_URL` (Vite bakes it at build time; we also write it to `/runtime-config.json` for production).
-
-### 5. Verify
-
-- Open your Vercel URL. You should see no “Backend unreachable” banner.
-- Register / log in (auth hits Railway → Supabase).
-- Upload a PDF. Document should move from Pending → Processing → Ready (BullMQ + Upstash Redis).
-- Chat with the document (requires LLM config, e.g. `GEMINI_API_KEY` on Railway if using Gemini).
-
-### Production env summary
-
-| Where     | Key variables |
-|----------|----------------|
-| **Railway (backend)** | `DATABASE_URL`, `JWT_SECRET`, `CORS_ORIGIN`, `REDIS_URL`, optional `GEMINI_API_KEY` |
-| **Vercel (frontend)** | `VITE_API_URL` = Railway backend URL |
-
----
-
-## Demo walkthrough
-
-Try DocuMind locally in under five minutes:
-
-1. **Start infrastructure** (from repo root): `docker compose up -d`. Wait until Postgres and Redis are healthy.
-2. **Backend**: `cd backend`, copy `.env.example` to `.env`, set `JWT_SECRET` (e.g. `openssl rand -base64 32`), `DATABASE_URL`, `REDIS_HOST`, `REDIS_PORT`, `CORS_ORIGIN=http://localhost:8080`. Run `npx prisma migrate deploy` then `npm run dev`. Backend should log “Application is running on: http://localhost:3000”.
-3. **Frontend**: From repo root, copy `.env.example` to `.env`, set `VITE_API_URL=http://localhost:3000`. Run `npm run dev`. Frontend runs at **http://localhost:8080**.
-4. **Open** http://localhost:8080. You should see the landing page with no “Backend unreachable” banner.
-5. **Register**: Click “Get Started” → create an account (name, email, password). You’re redirected to the Documents page.
-6. **Upload**: Drag and drop a PDF (or click to browse). The document appears with a progress bar. Wait until status is **Ready** (processing usually takes 30–90 seconds for a few pages).
-7. **Chat**: Click **Chat** on the document. Type a question (e.g. “What are the main points?”). Answers stream in and are grounded in your document; you can enable “Show sources under answers” in Settings.
-8. **Optional**: For local streaming, install [Ollama](https://ollama.ai/) and run `ollama pull qwen2.5:7b`. Set `LLM_PROVIDER=ollama`, `OLLAMA_BASE_URL=http://localhost:11434`, `OLLAMA_MODEL=qwen2.5:7b` in `backend/.env` and restart the backend. Without Ollama, the app uses a stub LLM (placeholder responses).
-
----
-
-## Known limitations
-
-- **Local file storage** — PDFs are stored on disk (`uploads/`); no S3 or object storage yet.
-- **Polling for document status** — The frontend polls `GET /documents/:id` every 2s for in-progress docs; no WebSocket push.
-- **No refresh tokens** — JWT-only auth; tokens expire after 7 days (configurable). Re-login required after expiry.
+1. **Upload** — `POST /documents/upload` → create Document (PENDING) → enqueue job
+2. **Process** — Worker: PDF → text → chunk → embed → insert into `document_chunks` (pgvector) → status DONE
+3. **Chat** — `POST /documents/:id/chat/stream` → embed query → similarity search → RAG prompt → stream Gemini tokens via SSE
 
 ---
 
@@ -348,33 +194,26 @@ Try DocuMind locally in under five minutes:
 
 ### Frontend (repo root `.env`)
 
-| Variable          | Required | Description |
-|-------------------|----------|-------------|
-| `VITE_API_URL`    | Yes      | Backend API base URL (e.g. `http://localhost:3000` locally; production: your Railway backend URL). No trailing slash. |
-| `VITE_APP_VERSION`| No       | App version string (default `0.0.0`). |
-
-Vite only exposes variables prefixed with `VITE_`. Restart the dev server after changing `.env`. **Production (Vercel):** set `VITE_API_URL` in project Environment Variables and redeploy so the build picks it up.
+| Variable | Required | Description |
+|----------|----------|-------------|
+| `VITE_API_URL` | Yes | Backend API base URL (e.g. `http://localhost:3000`). No trailing slash. |
+| `VITE_APP_VERSION` | No | App version string (default `0.0.0`). |
 
 ### Backend (`backend/.env`)
 
-| Variable              | Required | Description |
-|-----------------------|----------|-------------|
-| `DATABASE_URL`        | Yes      | PostgreSQL connection string. Local: `postgresql://user:password@localhost:5432/insight_garden`. **Supabase:** use URI from Dashboard → Settings → Database; add `?sslmode=require`; replace `[YOUR-PASSWORD]` with DB password. |
-| `JWT_SECRET`          | Yes      | Long random string for signing JWTs (e.g. `openssl rand -base64 32`). Must not be the literal `change-me-in-production`. |
-| `REDIS_HOST` / `REDIS_PORT` | Yes (or `REDIS_URL`) | Redis for BullMQ. Local: `localhost`, `6379`. **Upstash:** use `REDIS_URL` = full TCP URL (`rediss://default:PASSWORD@xxx.upstash.io:6379`) from Upstash dashboard (Redis Connect). |
-| `REDIS_URL`           | No (alternative) | Full Redis URL; overrides host/port/password. Use for Upstash: `rediss://default:...@...upstash.io:6379`. TLS is auto-enabled for `*.upstash.io`. |
-| `PORT`                | No       | HTTP port (default `3000`). Railway sets this automatically. |
-| `CORS_ORIGIN`         | No       | Allowed origin(s) for CORS; comma-separated for multiple. Default `http://localhost:8080`. Production: your Vercel origin (e.g. `https://your-app.vercel.app`). `*.vercel.app` and `*.railway.app` are also allowed in code. |
-| `JWT_EXPIRES_IN`     | No       | Token expiry in seconds (default `604800` = 7 days). |
-| `EMBEDDING_PROVIDER` | No       | `stub` or `openai`. |
-| `EMBEDDING_DIMENSION`| No       | Vector dimension (default `1536`; must match migration). |
-| `OPENAI_API_KEY`     | If OpenAI | For embeddings/LLM when using OpenAI. |
-| `LLM_PROVIDER`       | No       | `stub`, `ollama`, `openai`, or `gemini`. |
-| `GEMINI_API_KEY`     | If Gemini | For RAG/chat when `LLM_PROVIDER=gemini`. |
-| `OLLAMA_BASE_URL`    | No       | Ollama API URL (default `http://localhost:11434`). |
-| `OLLAMA_MODEL`       | No       | Model name (e.g. `qwen2.5:7b`). |
+| Variable | Required | Description |
+|----------|----------|-------------|
+| `DATABASE_URL` | Yes | PostgreSQL connection string. Add `?sslmode=require` for Supabase. |
+| `JWT_SECRET` | Yes | Long random string (e.g. `openssl rand -base64 32`). Must not be the default. |
+| `REDIS_HOST` / `REDIS_PORT` | Yes* | Redis for BullMQ. Local: `localhost`, `6379`. |
+| `REDIS_URL` | Yes* | Alternative: full Redis URL (e.g. Upstash `rediss://...`). |
+| `CORS_ORIGIN` | No | Allowed origin (default `http://localhost:8080`). |
+| `PORT` | No | HTTP port (default `3000`). |
+| `LLM_PROVIDER` | No | `gemini` (default), `ollama`, `openai`, or `stub`. |
+| `GEMINI_API_KEY` | If Gemini | API key from [Google AI Studio](https://aistudio.google.com/apikey). |
+| `GEMINI_MODEL` | No | Model name (default `gemini-2.5-flash`). |
 
-See `backend/.env.example` for full comments and optional RAG/embedding/LLM variables.
+See `backend/.env.example` for full options (Ollama, OpenAI, embeddings).
 
 ---
 
@@ -382,61 +221,70 @@ See `backend/.env.example` for full comments and optional RAG/embedding/LLM vari
 
 ```
 insight-garden/
-├── src/                    # Frontend (Vite + React)
-│   ├── components/        # UI: app (layout, sidebar, upload, cards), chat, landing, ui (shadcn)
-│   ├── hooks/              # useBackendHealth, useToast, useMobile
-│   ├── lib/                # api.ts (base URL, errors), sseChat.ts, utils
-│   ├── pages/              # Index, Login, Register, Dashboard, ChatPage, SettingsPage, NotFound, etc.
-│   ├── stores/             # useAppStore (auth, documents, chat), usePreferencesStore
-│   └── main.tsx, App.tsx
+├── src/                      # Frontend (Vite + React)
+│   ├── components/
+│   │   ├── app/              # Layout, sidebar, upload, cards, empty states
+│   │   ├── chat/             # MessageBubble, ChatInput, TypingIndicator
+│   │   ├── landing/          # Hero, Features, CTA, Footer, Navbar, PublicLayout
+│   │   └── ui/               # shadcn, Spline, Spotlight, TubelightNav
+│   ├── hooks/                # useBackendHealth, useToast, useMobile, useReducedMotion
+│   ├── lib/                  # api.ts, sseChat.ts, utils
+│   ├── pages/                # Index, Login, Register, Dashboard, ChatPage, Settings, etc.
+│   └── stores/               # useAppStore, usePreferencesStore
 ├── backend/
 │   ├── prisma/
-│   │   ├── schema.prisma   # User, Document, DocumentChunk (pgvector)
+│   │   ├── schema.prisma     # User, Document, DocumentChunk (pgvector)
 │   │   └── migrations/
 │   └── src/
-│       ├── auth/           # Register, login, JWT strategy/guard
-│       ├── documents/      # Controller, service, retrieval, RAG orchestrator, DTOs
-│       ├── chunks/         # DocumentChunkService (pgvector inserts/deletes)
-│       ├── embedding/     # Stub / OpenAI
-│       ├── rag/            # Prompt, LLM (stub, Ollama, OpenAI)
-│       ├── jobs/           # BullMQ document processor (PDF → chunk → embed)
-│       ├── health/         # GET /health
-│       ├── common/          # @Public(), @CurrentUser(), HttpExceptionFilter
-│       ├── lib/             # chunking.ts
-│       └── main.ts, app.module.ts
-├── docs/                   # LOCAL-DEV-SANITY-CHECKLIST, INCIDENT-*, TECHNICAL-AUDIT
-├── docker-compose.yml     # Postgres (pgvector) + Redis only
-├── .env.example            # Frontend env template
-└── package.json           # Frontend deps and scripts
+│       ├── auth/             # Register, login, JWT strategy/guard
+│       ├── documents/        # Controller, service, retrieval, RAG orchestrator
+│       ├── chunks/            # DocumentChunkService (pgvector)
+│       ├── embedding/        # Embedding service
+│       ├── rag/              # Prompt, Gemini client, LLM service
+│       ├── jobs/              # BullMQ document processor
+│       └── health/            # GET /health
+├── docker-compose.yml        # Postgres (pgvector) + Redis
+└── package.json              # Frontend deps and scripts
 ```
 
 ---
 
-## Available Scripts
+## Scripts
 
-### Repo root (frontend)
+### Frontend (repo root)
 
-| Script        | Description |
-|---------------|-------------|
-| `npm run dev` | Start Vite dev server (port 8080). |
-| `npm run build`| Production build. |
-| `npm run preview` | Preview production build. |
-| `npm run lint` | Run ESLint. |
-| `npm run test` | Run Vitest. |
+| Script | Description |
+|--------|-------------|
+| `npm run dev` | Start Vite dev server (port 8080) |
+| `npm run build` | Production build |
+| `npm run preview` | Preview production build |
+| `npm run lint` | Run ESLint |
+| `npm run test` | Run Vitest |
 
 ### Backend (`backend/`)
 
-| Script           | Description |
-|------------------|-------------|
-| `npm run dev`   | Start NestJS in watch mode (port 3000). |
-| `npm run build` | Compile to `dist/`. |
-| `npm run start` | Run compiled app. |
-| `npm run lint`  | Run ESLint. |
-| `npm run test`  | Unit tests (Jest). |
-| `npm run test:e2e` | E2E tests. |
-| `npx prisma migrate dev` | Apply migrations (dev). |
-| `npx prisma migrate deploy` | Apply migrations (prod). |
-| `npx prisma studio` | Open Prisma Studio for DB inspection. |
+| Script | Description |
+|--------|-------------|
+| `npm run dev` | Start NestJS in watch mode (port 3000) |
+| `npm run build` | Compile to `dist/` |
+| `npm run start` | Run compiled app |
+| `npm run lint` | Run ESLint |
+| `npm run test` | Unit tests (Jest) |
+| `npx prisma migrate deploy` | Apply migrations |
+| `npx prisma studio` | Open Prisma Studio |
+
+---
+
+## Deployment
+
+**Production:** Frontend on Vercel, Backend on Railway, Database on Supabase, Redis on Upstash.
+
+1. **Database** — Create Supabase project, copy connection string, add `?sslmode=require`, run `npx prisma migrate deploy`
+2. **Redis** — Create Upstash Redis, copy `REDIS_URL`
+3. **Backend** — Deploy to Railway, set `DATABASE_URL`, `JWT_SECRET`, `CORS_ORIGIN`, `REDIS_URL`, `GEMINI_API_KEY`
+4. **Frontend** — Deploy to Vercel, set `VITE_API_URL` to your Railway backend URL
+
+See [docs/CASE-STUDY-DEPLOYMENT.md](docs/CASE-STUDY-DEPLOYMENT.md) for a full deployment walkthrough.
 
 ---
 
@@ -444,57 +292,23 @@ insight-garden/
 
 | Document | Description |
 |----------|-------------|
-| [docs/CASE-STUDY-DEPLOYMENT.md](docs/CASE-STUDY-DEPLOYMENT.md) | **Deployment case study:** Full production rollout with Vercel, Railway, Supabase, Upstash—issues, fixes, URLs, env vars, and lessons. |
-| [docs/LOCAL-DEV-SANITY-CHECKLIST.md](docs/LOCAL-DEV-SANITY-CHECKLIST.md) | Step-by-step local dev verification (env, Docker, auth, CORS, errors). |
-| [docs/INCIDENT-AUTH-SSE-FIX.md](docs/INCIDENT-AUTH-SSE-FIX.md) | Post-mortem and fix plan for auth/SSE/env (rehydration, CORS, JWT). |
-| [docs/TECHNICAL-AUDIT.md](docs/TECHNICAL-AUDIT.md) | Full technical audit: architecture, auth, data flow, streaming, state, UX, DX; P0/P1/P2 and next steps. |
-| [backend/README.md](backend/README.md) | Backend-specific setup and NestJS notes. |
-| [backend/.env.example](backend/.env.example) | Backend env template with comments. |
+| [docs/CASE-STUDY-DEPLOYMENT.md](docs/CASE-STUDY-DEPLOYMENT.md) | Production deployment with Vercel, Railway, Supabase, Upstash |
+| [docs/LOCAL-DEV-SANITY-CHECKLIST.md](docs/LOCAL-DEV-SANITY-CHECKLIST.md) | Step-by-step local dev verification |
+| [docs/TECHNICAL-AUDIT.md](docs/TECHNICAL-AUDIT.md) | Technical audit and architecture notes |
+| [CONTRIBUTING.md](CONTRIBUTING.md) | Contribution guidelines |
 
 ---
 
 ## Contributing
 
-We welcome contributions. For detailed guidelines (setup, branching, PR process, code style, testing), see **[CONTRIBUTING.md](CONTRIBUTING.md)**.
-
-### Code of conduct
-
-- Be respectful and inclusive.
-- Focus on constructive feedback and clear, factual discussions.
-
-### How to contribute
-
-1. **Fork** the repository and clone your fork.
-2. **Create a branch** from `main` (e.g. `feature/short-feature-name` or `fix/bug-description`).
-3. **Make your changes** — keep commits focused and messages clear (e.g. “Add protected routes for /app and /chat”).
-4. **Run checks** — from repo root: `npm run lint` and `npm run test`; from `backend/`: `npm run lint` and `npm run test`. Ensure migrations apply if you change the schema.
-5. **Push** to your fork and open a **Pull Request** against `main`.
-6. **Describe** what you changed and why; reference any issues if applicable.
-7. Address review feedback; maintainers will merge when the PR is approved and CI (if any) passes.
-
-### Branch naming
-
-- `feature/<name>` — New features.
-- `fix/<name>` — Bug fixes.
-- `docs/<name>` — Documentation only.
-- `chore/<name>` — Tooling, deps, config.
-
-### Code style
-
-- **Frontend:** TypeScript strict; follow existing patterns (Zustand, React hooks, path alias `@/`). Use the project’s ESLint/Prettier config.
-- **Backend:** NestJS style; DTOs with class-validator; use existing modules and guards. Use the backend’s ESLint/Prettier config.
-
-### Scope
-
-- For large or breaking changes, open an **Issue** first to discuss approach and scope.
-- For small fixes (typos, docs, config), a direct PR is fine.
+We welcome contributions. See **[CONTRIBUTING.md](CONTRIBUTING.md)** for setup, branching, PR process, and code style.
 
 ---
 
 ## License
 
-This project is currently unlicensed. All rights reserved. If you need a license for use or contribution, please open an issue to discuss.
+This project is currently unlicensed. All rights reserved.
 
 ---
 
-**DocuMind (Insight Garden)** — Document RAG with streaming chat, pgvector retrieval, and configurable embeddings/LLM.
+**DocuMind** — Chat with your documents. Powered by RAG, pgvector, and Gemini.
