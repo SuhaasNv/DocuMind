@@ -81,9 +81,9 @@ const Register = () => {
   };
 
   return (
-    <div className="min-h-screen bg-background">
+    <div className="min-h-[100dvh] bg-background">
       <div className="noise-overlay" />
-      <div className="pt-28 min-h-screen flex items-center justify-center relative overflow-hidden">
+      <div className="min-h-[100dvh] flex items-center justify-center relative overflow-hidden px-4 pt-24 pb-10">
         {/* Background effects */}
         <div className="absolute inset-0 hero-gradient opacity-50" />
         <motion.div
@@ -99,10 +99,10 @@ const Register = () => {
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.5 }}
-        className="relative z-10 w-full max-w-md mx-4"
+        className="relative z-10 w-full max-w-md"
       >
         {/* Card */}
-        <div className="glass-card rounded-2xl p-8">
+        <div className="glass-card rounded-2xl p-6 sm:p-8">
           {/* Logo */}
           <Link to="/" className="flex items-center justify-center gap-2 mb-8">
             <div className="w-10 h-10 rounded-xl bg-primary/20 flex items-center justify-center">

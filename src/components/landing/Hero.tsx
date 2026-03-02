@@ -14,30 +14,31 @@ const Hero = () => {
 
   const rawX = useMotionValue(-200);
   const rawY = useMotionValue(-200);
-
   const blobX = useSpring(rawX, { stiffness: 60, damping: 20, mass: 1 });
   const blobY = useSpring(rawY, { stiffness: 60, damping: 20, mass: 1 });
 
   useEffect(() => {
     const el = sectionRef.current;
     if (!el) return;
-
     const onMove = (e: MouseEvent) => {
       const rect = el.getBoundingClientRect();
       rawX.set(e.clientX - rect.left);
       rawY.set(e.clientY - rect.top);
     };
-
     el.addEventListener('mousemove', onMove);
     return () => el.removeEventListener('mousemove', onMove);
   }, [rawX, rawY]);
 
   return (
-    <section ref={sectionRef} className="relative min-h-screen flex items-center justify-center overflow-hidden bg-black pt-20">
-      <Card className="w-full min-h-screen bg-black/[0.96] relative overflow-hidden border-0 rounded-none">
-        {/* Mouse-following gradient blob */}
+    <section
+      ref={sectionRef}
+      className="relative min-h-[100dvh] flex items-center justify-center overflow-hidden bg-black"
+    >
+      <Card className="w-full min-h-[100dvh] bg-black/[0.96] relative overflow-hidden border-0 rounded-none">
+
+        {/* Mouse-following blob — desktop only, pointless on touch */}
         <motion.div
-          className="pointer-events-none absolute z-0"
+          className="pointer-events-none absolute z-0 hidden md:block"
           style={{
             x: blobX,
             y: blobY,
@@ -52,31 +53,38 @@ const Hero = () => {
           }}
         />
 
-        <Spotlight
-          className="-top-40 left-0 md:left-60 md:-top-20"
-          fill="white"
-        />
+        <Spotlight className="-top-40 left-0 md:left-60 md:-top-20" fill="white" />
 
-        <div className="flex flex-col md:flex-row h-full min-h-[calc(100vh-4rem)]">
-          {/* Left content */}
-          <div className="flex-1 p-8 md:p-16 relative z-10 flex flex-col justify-center">
+        {/* ── Two-column layout: stacks on mobile, side-by-side on md+ ── */}
+        <div className="flex flex-col md:flex-row min-h-[100dvh]">
+
+          {/* LEFT — text content */}
+          <div className="flex-1 flex flex-col justify-center relative z-10
+                          px-6 pt-28 pb-10
+                          sm:px-10 sm:pt-32 sm:pb-12
+                          md:px-16 md:pt-0 md:pb-0">
+
+            {/* Badge */}
             <motion.div
-              initial={{ opacity: 0, y: 20 }}
+              initial={{ opacity: 0, y: 16 }}
               animate={{ opacity: 1, y: 0 }}
-              transition={{ duration: 0.6 }}
-              className="mb-6"
+              transition={{ duration: 0.55 }}
+              className="mb-5"
             >
-              <span className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-white/10 border border-white/20 text-neutral-300 text-sm font-medium">
-                <Sparkles className="w-4 h-4 shrink-0 text-white" />
+              <span className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-white/10 border border-white/20 text-neutral-300 text-xs sm:text-sm font-medium">
+                <Sparkles className="w-3.5 h-3.5 sm:w-4 sm:h-4 shrink-0 text-white" />
                 AI-Powered Document Intelligence
               </span>
             </motion.div>
 
+            {/* Headline */}
             <motion.h1
-              initial={{ opacity: 0, y: 20 }}
+              initial={{ opacity: 0, y: 16 }}
               animate={{ opacity: 1, y: 0 }}
-              transition={{ duration: 0.6, delay: 0.1 }}
-              className="text-4xl md:text-5xl lg:text-6xl font-bold bg-clip-text text-transparent bg-gradient-to-b from-neutral-50 to-neutral-400 mb-6 leading-tight"
+              transition={{ duration: 0.55, delay: 0.1 }}
+              className="font-bold leading-tight mb-5
+                         text-3xl sm:text-4xl md:text-5xl lg:text-6xl
+                         bg-clip-text text-transparent bg-gradient-to-b from-neutral-50 to-neutral-400"
             >
               Chat with your
               <br />
@@ -86,74 +94,78 @@ const Hero = () => {
               </span>
             </motion.h1>
 
+            {/* Description */}
             <motion.p
-              initial={{ opacity: 0, y: 20 }}
+              initial={{ opacity: 0, y: 16 }}
               animate={{ opacity: 1, y: 0 }}
-              transition={{ duration: 0.6, delay: 0.2 }}
-              className="text-neutral-400 max-w-lg text-base md:text-lg mb-10 leading-relaxed"
+              transition={{ duration: 0.55, delay: 0.2 }}
+              className="text-neutral-400 text-sm sm:text-base md:text-lg mb-8 leading-relaxed max-w-md"
             >
               Upload PDFs and let AI understand them for you. Ask questions,
               get answers grounded in your documents — no hallucinations, just
               facts.
             </motion.p>
 
+            {/* CTA buttons — full-width on mobile, auto on sm+ */}
             <motion.div
-              initial={{ opacity: 0, y: 20 }}
+              initial={{ opacity: 0, y: 16 }}
               animate={{ opacity: 1, y: 0 }}
-              transition={{ duration: 0.6, delay: 0.3 }}
-              className="flex flex-col sm:flex-row gap-4"
+              transition={{ duration: 0.55, delay: 0.3 }}
+              className="flex flex-col sm:flex-row gap-3 w-full sm:w-auto"
             >
-              <Link to={isAuthenticated ? '/app' : '/register'}>
+              <Link to={isAuthenticated ? '/app' : '/register'} className="w-full sm:w-auto">
                 <Button
                   size="lg"
-                  className="bg-white text-black hover:bg-neutral-200 font-semibold px-8"
+                  className="w-full sm:w-auto bg-white text-black hover:bg-neutral-200 font-semibold px-6 active:scale-[0.97] transition-transform"
                 >
                   {isAuthenticated ? 'Open Dashboard' : 'Get Started Free'}
-                  <ArrowRight className="w-5 h-5 ml-2" />
+                  <ArrowRight className="w-4 h-4 ml-2" />
                 </Button>
               </Link>
-              <Link to="/how-it-works">
+              <Link to="/how-it-works" className="w-full sm:w-auto">
                 <Button
                   size="lg"
                   variant="outline"
-                  className="border-white/20 text-neutral-300 hover:bg-white/10 hover:text-white px-8"
+                  className="w-full sm:w-auto border-white/20 text-neutral-300 hover:bg-white/10 hover:text-white px-6 active:scale-[0.97] transition-transform"
                 >
                   See How It Works
                 </Button>
               </Link>
             </motion.div>
 
+            {/* Stats */}
             <motion.div
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
-              transition={{ duration: 0.6, delay: 0.5 }}
-              className="mt-12 pt-8 border-t border-white/10 flex flex-wrap gap-8"
+              transition={{ duration: 0.55, delay: 0.5 }}
+              className="mt-10 pt-8 border-t border-white/10 grid grid-cols-3 gap-4 sm:flex sm:flex-row sm:gap-8"
             >
               {[
                 { label: 'Documents Processed', value: '50K+' },
-                { label: 'Accuracy Rate', value: '99.2%' },
-                { label: 'Teams Using Insight', value: '1,200+' },
+                { label: 'Accuracy Rate',        value: '99.2%' },
+                { label: 'Teams Using Insight',  value: '1,200+' },
               ].map((stat) => (
-                <div key={stat.label}>
-                  <p className="text-2xl font-bold text-white">{stat.value}</p>
-                  <p className="text-sm text-neutral-500 mt-1">{stat.label}</p>
+                <div key={stat.label} className="text-center sm:text-left">
+                  <p className="text-lg sm:text-2xl font-bold text-white">{stat.value}</p>
+                  <p className="text-[10px] sm:text-sm text-neutral-500 mt-0.5 leading-tight">{stat.label}</p>
                 </div>
               ))}
             </motion.div>
           </div>
 
-          {/* Right content — 3D Spline scene */}
+          {/* RIGHT — Spline scene, hidden on mobile to save bandwidth & layout */}
           <motion.div
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             transition={{ duration: 1, delay: 0.4 }}
-            className="flex-1 relative min-h-[400px] md:min-h-0"
+            className="hidden md:flex flex-1 relative min-h-[400px]"
           >
             <SplineScene
               scene="https://prod.spline.design/kZDDjO5HuC9GJUM2/scene.splinecode"
               className="w-full h-full"
             />
           </motion.div>
+
         </div>
       </Card>
     </section>

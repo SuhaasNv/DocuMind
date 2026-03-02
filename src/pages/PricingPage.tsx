@@ -68,26 +68,26 @@ const itemVariants = {
 
 const PricingPage = () => {
   return (
-    <div className="min-h-screen bg-background">
+    <div className="min-h-[100dvh] bg-background">
       <div className="noise-overlay" />
 
       <motion.main
         initial={{ opacity: 0 }}
         animate={{ opacity: 1 }}
         transition={{ duration: 0.5 }}
-        className="pt-28 pb-16"
+        className="pt-24 sm:pt-28 pb-12 sm:pb-16"
       >
-        <div className="container mx-auto px-6">
+        <div className="container mx-auto px-4 sm:px-6">
           <motion.div
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.6 }}
-            className="text-center mb-16"
+            className="text-center mb-10 sm:mb-16"
           >
-            <h1 className="text-4xl md:text-5xl font-bold mb-4">
+            <h1 className="text-3xl sm:text-4xl md:text-5xl font-bold mb-3 sm:mb-4 leading-tight">
               Simple, <span className="gradient-text">transparent</span> pricing
             </h1>
-            <p className="text-muted-foreground text-lg max-w-2xl mx-auto">
+            <p className="text-muted-foreground text-sm sm:text-lg max-w-2xl mx-auto">
               Start free and scale as you need. No hidden fees.
             </p>
           </motion.div>
@@ -96,15 +96,15 @@ const PricingPage = () => {
             variants={containerVariants}
             initial="hidden"
             animate="visible"
-            className="grid grid-cols-1 md:grid-cols-3 gap-6 max-w-5xl mx-auto"
+            className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-6 max-w-5xl mx-auto"
           >
             {tiers.map((tier) => (
               <motion.div
                 key={tier.name}
                 variants={itemVariants}
-                className={`relative rounded-2xl p-6 glass-card transition-all duration-300 ${
+                className={`relative rounded-2xl p-5 sm:p-6 glass-card transition-all duration-300 ${
                   tier.highlighted
-                    ? 'border-primary/50 ring-2 ring-primary/20 scale-[1.02] md:scale-105'
+                    ? 'border-primary/50 ring-2 ring-primary/20 sm:scale-105'
                     : 'hover:border-primary/30'
                 }`}
               >

@@ -74,28 +74,25 @@ const Login = () => {
   };
 
   return (
-    <div className="min-h-screen bg-background">
+    <div className="min-h-[100dvh] bg-background">
       <div className="noise-overlay" />
-      <div className="pt-28 min-h-screen flex items-center justify-center relative overflow-hidden">
+      <div className="min-h-[100dvh] flex items-center justify-center relative overflow-hidden px-4 pt-24 pb-10">
         {/* Background effects */}
         <div className="absolute inset-0 hero-gradient opacity-50" />
         <motion.div
           className="absolute top-1/3 left-1/4 w-72 h-72 bg-primary/10 rounded-full blur-3xl"
-        animate={{
-          scale: [1, 1.2, 1],
-          opacity: [0.3, 0.5, 0.3],
-        }}
-        transition={{ duration: 8, repeat: Infinity, ease: "easeInOut" }}
-      />
+          animate={{ scale: [1, 1.2, 1], opacity: [0.3, 0.5, 0.3] }}
+          transition={{ duration: 8, repeat: Infinity, ease: 'easeInOut' }}
+        />
 
       <motion.div
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.5 }}
-        className="relative z-10 w-full max-w-md mx-4"
+        className="relative z-10 w-full max-w-md"
       >
         {/* Card */}
-        <div className="glass-card rounded-2xl p-8">
+        <div className="glass-card rounded-2xl p-6 sm:p-8">
           {/* Logo */}
           <Link to="/" className="flex items-center justify-center gap-2 mb-8">
             <div className="w-10 h-10 rounded-xl bg-primary/20 flex items-center justify-center">
