@@ -13,6 +13,52 @@
 
 ---
 
+## Screenshots
+
+*User journey: Landing → Features → Pricing → Sign in → Dashboard → Chat → Settings*
+
+<p align="center">
+  <strong>1. Landing Hero</strong><br>
+  <img src="images/landing 1.png" alt="Landing hero with 3D scene and CTAs" width="800">
+</p>
+
+<p align="center">
+  <strong>2. Features Overview</strong><br>
+  <img src="images/landing2.png" alt="Features: Upload PDFs, RAG, AI Chat, Security" width="800">
+</p>
+
+<p align="center">
+  <strong>3. Pricing</strong><br>
+  <img src="images/pricing.png" alt="Pricing tiers: Free, Pro, Enterprise" width="800">
+</p>
+
+<p align="center">
+  <strong>4. Sign In</strong><br>
+  <img src="images/signin.png" alt="Sign in form" width="800">
+</p>
+
+<p align="center">
+  <strong>5. Documents Dashboard</strong><br>
+  <img src="images/dashboard.png" alt="Upload area and document list" width="800">
+</p>
+
+<p align="center">
+  <strong>6. Chat — Asking a question</strong><br>
+  <img src="images/question1.png" alt="User asks question about document" width="800">
+</p>
+
+<p align="center">
+  <strong>7. Chat — AI answer with sources</strong><br>
+  <img src="images/answer1.png" alt="AI response with source citations" width="800">
+</p>
+
+<p align="center">
+  <strong>8. Settings</strong><br>
+  <img src="images/settings.png" alt="Account, security, and preferences" width="800">
+</p>
+
+---
+
 ## Features
 
 | Feature | Description |
