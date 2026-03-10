@@ -9,6 +9,7 @@
 export interface ChatSource {
   chunkIndex: number;
   score: number;
+  snippet?: string;
 }
 
 export interface StreamChatCallbacks {

@@ -90,9 +90,27 @@ export class RagOrchestratorService {
     const sources: ChatSourceDto[] = includedChunkIndices
       .map((idx) => chunkByIndex.get(idx))
       .filter((c): c is NonNullable<typeof c> => c != null)
-      .map((c) => ({ chunkIndex: c.chunkIndex, score: c.score }));
+      .map((c) => ({
+        chunkIndex: c.chunkIndex,
+        score: c.score,
+        snippet: this.makeSnippet(c.content),
+      }));
 
     return { answer, sources };
+  }
+
+  /** Extract a clean snippet from chunk content (first sentence or first 120 chars). */
+  private makeSnippet(content: string, maxLen = 120): string {
+    const trimmed = content.replace(/\s+/g, ' ').trim();
+    if (trimmed.length <= maxLen) return trimmed;
+    // Prefer breaking at the end of the first sentence
+    const sentenceEnd = trimmed.search(/[.!?]\s/);
+    if (sentenceEnd > 0 && sentenceEnd < maxLen) {
+      return trimmed.slice(0, sentenceEnd + 1);
+    }
+    // Fall back to word boundary
+    const wordBreak = trimmed.lastIndexOf(' ', maxLen);
+    return trimmed.slice(0, wordBreak > 0 ? wordBreak : maxLen) + '…';
   }
 
   /**
@@ -168,7 +186,11 @@ export class RagOrchestratorService {
         return includedChunkIndices
           .map((idx) => chunkByIndex.get(idx))
           .filter((c): c is NonNullable<typeof c> => c != null)
-          .map((c) => ({ chunkIndex: c.chunkIndex, score: c.score }));
+          .map((c) => ({
+            chunkIndex: c.chunkIndex,
+            score: c.score,
+            snippet: this.makeSnippet(c.content),
+          }));
       })();
       logRagLatency({ retrievalMs, promptBuildMs, llmFirstTokenMs });
       yield { type: 'done', data: { sources } };

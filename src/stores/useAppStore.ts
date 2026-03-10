@@ -15,6 +15,7 @@ export interface Document {
 export interface ChatSource {
   chunkIndex: number;
   score: number;
+  snippet?: string;
 }
 
 export interface Message {
@@ -23,6 +24,7 @@ export interface Message {
   content: string;
   timestamp: Date;
   isStreaming?: boolean;
+  isError?: boolean;
   sources?: ChatSource[];
 }
 
@@ -82,6 +84,9 @@ interface AppState {
   updateMessage: (documentId: string, messageId: string, content: string) => void;
   setStreaming: (documentId: string, messageId: string, isStreaming: boolean) => void;
   setMessageSources: (documentId: string, messageId: string, sources: ChatSource[]) => void;
+  setMessageError: (documentId: string, messageId: string) => void;
+  clearConversation: (documentId: string) => void;
+  removeLastMessages: (documentId: string, count: number) => void;
   toggleSidebar: () => void;
   setSidebarOpen: (open: boolean) => void;
   isMobileMenuOpen: boolean;
@@ -249,6 +254,47 @@ export const useAppStore = create<AppState>()(
               messages: conversation.messages.map((msg) =>
                 msg.id === messageId ? { ...msg, sources } : msg
               ),
+            },
+          },
+        };
+      }),
+
+      setMessageError: (documentId, messageId) => set((state) => {
+        const conv = state.conversations[documentId];
+        if (!conv) return state;
+        return {
+          conversations: {
+            ...state.conversations,
+            [documentId]: {
+              ...conv,
+              messages: conv.messages.map((m) =>
+                m.id === messageId ? { ...m, isError: true } : m
+              ),
+            },
+          },
+        };
+      }),
+
+      clearConversation: (documentId) => set((state) => {
+        const conv = state.conversations[documentId];
+        if (!conv) return state;
+        return {
+          conversations: {
+            ...state.conversations,
+            [documentId]: { ...conv, messages: [] },
+          },
+        };
+      }),
+
+      removeLastMessages: (documentId, count) => set((state) => {
+        const conv = state.conversations[documentId];
+        if (!conv) return state;
+        return {
+          conversations: {
+            ...state.conversations,
+            [documentId]: {
+              ...conv,
+              messages: conv.messages.slice(0, Math.max(0, conv.messages.length - count)),
             },
           },
         };
