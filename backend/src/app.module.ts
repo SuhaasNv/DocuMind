@@ -11,6 +11,7 @@ import { EmbeddingModule } from './embedding/embedding.module.js';
 import { ChunksModule } from './chunks/chunks.module.js';
 import { JwtAuthGuard } from './auth/jwt-auth.guard.js';
 import { HttpExceptionFilter } from './common/filters/http-exception.filter.js';
+import { AdminModule } from './admin/admin.module.js';
 
 @Module({
   imports: [
@@ -19,8 +20,10 @@ import { HttpExceptionFilter } from './common/filters/http-exception.filter.js';
       imports: [ConfigModule],
       inject: [ConfigService],
       useFactory: (config: ConfigService) => {
-        const ttl = parseInt(config.get('THROTTLE_TTL_MS') ?? '60000', 10) || 60000;
-        const limit = parseInt(config.get('THROTTLE_LIMIT') ?? '100', 10) || 100;
+        const ttl =
+          parseInt(config.get('THROTTLE_TTL_MS') ?? '60000', 10) || 60000;
+        const limit =
+          parseInt(config.get('THROTTLE_LIMIT') ?? '100', 10) || 100;
         return [{ name: 'default', ttl, limit }];
       },
     }),
@@ -31,6 +34,7 @@ import { HttpExceptionFilter } from './common/filters/http-exception.filter.js';
     ChunksModule,
     JobsModule,
     DocumentsModule,
+    AdminModule,
   ],
   providers: [
     { provide: APP_GUARD, useClass: ThrottlerGuard },

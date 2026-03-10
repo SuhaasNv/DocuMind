@@ -8,6 +8,7 @@ import {
   LogOut,
   Plus,
   Trash2,
+  ShieldAlert,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
@@ -40,12 +41,13 @@ const SidebarContent = ({ isExpanded, onLinkClick, isMobileSheet = false, showLo
   const pathname = location.pathname;
   const navigate = useNavigate();
   const [deleteDocId, setDeleteDocId] = useState<string | null>(null);
-  const { setAuthenticated, abortActiveSSE, documents, documentSearchQuery, removeDocument, accessToken } = useAppStore();
+  const { setAuthenticated, abortActiveSSE, documents, documentSearchQuery, removeDocument, accessToken, user } = useAppStore();
 
+  const isAdminPanel = pathname.startsWith('/app/admin');
   const recentDocuments = documentSearchQuery.trim()
     ? documents.filter((doc) =>
-        doc.name.toLowerCase().includes(documentSearchQuery.trim().toLowerCase())
-      ).slice(0, 5)
+      doc.name.toLowerCase().includes(documentSearchQuery.trim().toLowerCase())
+    ).slice(0, 5)
     : documents.slice(0, 5);
 
   const handleLogout = () => {
@@ -73,11 +75,24 @@ const SidebarContent = ({ isExpanded, onLinkClick, isMobileSheet = false, showLo
     if (pathname === `/chat/${docId}`) navigate('/app');
   };
 
-  const navItems = [
+  // Admin panel: only admin-specific nav (no Documents, Upload, Recent Documents)
+  const adminNavItems = [
+    { icon: Home, label: 'Home', path: '/' },
+    { icon: ShieldAlert, label: 'Admin Dashboard', path: '/app/admin' },
+    { icon: Settings, label: 'Settings', path: '/app/settings' },
+  ];
+
+  // Normal user nav
+  const userNavItems = [
     { icon: Home, label: 'Home', path: '/' },
     { icon: LayoutDashboard, label: 'Documents', path: '/app' },
     { icon: Settings, label: 'Settings', path: '/app/settings' },
   ];
+  if (user?.role === 'ADMIN') {
+    userNavItems.push({ icon: ShieldAlert, label: 'Admin Panel', path: '/app/admin' });
+  }
+
+  const navItems = isAdminPanel ? adminNavItems : userNavItems;
 
   const linkClass = cn(
     'flex items-center gap-3 rounded-lg transition-colors min-h-touch md:min-h-0 min-w-0',
@@ -98,21 +113,23 @@ const SidebarContent = ({ isExpanded, onLinkClick, isMobileSheet = false, showLo
         </div>
       )}
 
-      {/* Upload Button */}
-      <div className={isMobileSheet ? 'p-4' : 'p-3'}>
-        <Link to="/app" onClick={onLinkClick}>
-          <Button
-            variant="default"
-            className={cn(
-              'w-full justify-start gap-3 min-h-touch md:min-h-0',
-              !isExpanded && !isMobileSheet && 'justify-center px-0'
-            )}
-          >
-            <Plus className="w-5 h-5 shrink-0" />
-            {(isExpanded || isMobileSheet) && 'Upload Document'}
-          </Button>
-        </Link>
-      </div>
+      {/* Upload Button - hidden on admin panel */}
+      {!isAdminPanel && (
+        <div className={isMobileSheet ? 'p-4' : 'p-3'}>
+          <Link to="/app" onClick={onLinkClick}>
+            <Button
+              variant="default"
+              className={cn(
+                'w-full justify-start gap-3 min-h-touch md:min-h-0',
+                !isExpanded && !isMobileSheet && 'justify-center px-0'
+              )}
+            >
+              <Plus className="w-5 h-5 shrink-0" />
+              {(isExpanded || isMobileSheet) && 'Upload Document'}
+            </Button>
+          </Link>
+        </div>
+      )}
 
       {/* Navigation */}
       <nav className="flex-1 overflow-y-auto py-2 px-3">
@@ -144,8 +161,8 @@ const SidebarContent = ({ isExpanded, onLinkClick, isMobileSheet = false, showLo
           })}
         </ul>
 
-        {/* Recent Documents */}
-        {(isExpanded || isMobileSheet) && recentDocuments.length > 0 && (
+        {/* Recent Documents - hidden on admin panel */}
+        {!isAdminPanel && (isExpanded || isMobileSheet) && recentDocuments.length > 0 && (
           <div className="mt-6">
             <h3 className="px-3 mb-2 text-xs font-medium text-muted-foreground uppercase tracking-wider">
               Recent Documents

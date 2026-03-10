@@ -4,6 +4,10 @@ import { AuthService, AuthResponse } from './auth.service.js';
 import { RegisterDto } from './dto/register.dto.js';
 import { LoginDto } from './dto/login.dto.js';
 import { Public } from '../common/decorators/public.decorator.js';
+import {
+  CurrentUser,
+  JwtPayload,
+} from '../common/decorators/current-user.decorator.js';
 
 /** Stricter rate limit for auth to prevent brute force and spam signups. */
 const AUTH_THROTTLE = { default: { limit: 10, ttl: 60000 } }; // 10 per minute per IP
@@ -24,5 +28,11 @@ export class AuthController {
   @Post('login')
   async login(@Body() dto: LoginDto): Promise<AuthResponse> {
     return this.authService.login(dto);
+  }
+
+  @Post('ping')
+  async ping(@CurrentUser() user: JwtPayload): Promise<{ success: boolean }> {
+    await this.authService.ping(user.sub);
+    return { success: true };
   }
 }

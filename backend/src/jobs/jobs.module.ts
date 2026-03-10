@@ -12,7 +12,10 @@ function getRedisConnection(): {
   tls?: object;
 } {
   const redisUrl = process.env.REDIS_URL?.trim();
-  if (redisUrl && (redisUrl.startsWith('redis://') || redisUrl.startsWith('rediss://'))) {
+  if (
+    redisUrl &&
+    (redisUrl.startsWith('redis://') || redisUrl.startsWith('rediss://'))
+  ) {
     try {
       const u = new URL(redisUrl);
       const host = u.hostname;
@@ -31,9 +34,7 @@ function getRedisConnection(): {
   }
 
   let host =
-    process.env.REDIS_HOST ||
-    process.env.UPSTASH_REDIS_ENDPOINT ||
-    'localhost';
+    process.env.REDIS_HOST || process.env.UPSTASH_REDIS_ENDPOINT || 'localhost';
   const restUrl = process.env.UPSTASH_REDIS_REST_URL?.trim();
   if (restUrl) {
     try {
@@ -53,7 +54,9 @@ function getRedisConnection(): {
     process.env.UPSTASH_REDIS_PASSWORD ||
     undefined;
   const needsTls =
-    host.endsWith('.upstash.io') || process.env.REDIS_TLS === '1' || process.env.REDIS_TLS === 'true';
+    host.endsWith('.upstash.io') ||
+    process.env.REDIS_TLS === '1' ||
+    process.env.REDIS_TLS === 'true';
   return {
     host,
     port,
