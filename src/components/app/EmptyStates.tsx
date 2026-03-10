@@ -72,7 +72,13 @@ export const EmptySearch = () => (
     />
 );
 
-export const EmptyChatState = ({ onPromptClick }: { onPromptClick?: (q: string) => void }) => {
+export const EmptyChatState = ({
+    onPromptClick,
+    isLoading = false,
+}: {
+    onPromptClick?: (q: string) => void;
+    isLoading?: boolean;
+}) => {
     const SUGGESTIONS = [
         'What is the main topic?',
         'Summarize the key points',
@@ -83,15 +89,17 @@ export const EmptyChatState = ({ onPromptClick }: { onPromptClick?: (q: string) 
     return (
         <div className="flex-1 flex items-center justify-center p-8 min-h-[400px]">
             <div className="text-center max-w-md w-full">
+                {/* Reduced icon — heading is the focal point */}
                 <motion.div
                     initial={{ scale: 0.9, opacity: 0 }}
                     animate={{ scale: 1, opacity: 1 }}
                     transition={{ duration: 0.5 }}
-                    className="relative w-24 h-24 mx-auto mb-8"
+                    className="relative w-14 h-14 mx-auto mb-6"
+                    aria-hidden="true"
                 >
-                    <div className="absolute inset-0 bg-primary/20 rounded-3xl rotate-6 transform transition-transform" />
-                    <div className="absolute inset-0 bg-background border border-border rounded-3xl -rotate-3 flex items-center justify-center shadow-lg">
-                        <MessageSquare className="w-10 h-10 text-primary" strokeWidth={1.5} />
+                    <div className="absolute inset-0 bg-primary/20 rounded-2xl rotate-6 transform transition-transform" />
+                    <div className="absolute inset-0 bg-background border border-border rounded-2xl -rotate-3 flex items-center justify-center shadow-md">
+                        <MessageSquare className="w-6 h-6 text-primary" strokeWidth={1.5} />
                     </div>
                 </motion.div>
 
@@ -100,17 +108,25 @@ export const EmptyChatState = ({ onPromptClick }: { onPromptClick?: (q: string) 
                     This document is ready. I can answer specific questions, summarize sections, or explain complex terms.
                 </p>
 
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                {/* Suggestion chips — dimmed while a response is in flight */}
+                <div
+                    className={cn(
+                        'grid grid-cols-1 sm:grid-cols-2 gap-3 transition-opacity duration-200',
+                        isLoading && 'opacity-40 pointer-events-none',
+                    )}
+                    aria-hidden={isLoading}
+                >
                     {SUGGESTIONS.map((question, i) => (
                         <motion.button
                             key={question}
                             initial={{ opacity: 0, y: 10 }}
                             animate={{ opacity: 1, y: 0 }}
                             transition={{ delay: 0.1 * i }}
-                            onClick={() => onPromptClick?.(question)}
-                            className="px-4 py-3 rounded-xl bg-secondary/50 hover:bg-secondary border border-transparent hover:border-border text-sm text-left transition-all duration-200 text-foreground/80 hover:text-foreground"
+                            onClick={() => !isLoading && onPromptClick?.(question)}
+                            disabled={isLoading}
+                            className="px-4 py-3 rounded-xl bg-secondary/50 hover:bg-secondary border border-transparent hover:border-border text-sm text-left transition-all duration-200 text-foreground/80 hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background disabled:cursor-not-allowed"
                         >
-                            "{question}"
+                            {question}
                         </motion.button>
                     ))}
                 </div>

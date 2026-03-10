@@ -1,32 +1,44 @@
-import { memo, useState, useEffect, useRef } from 'react';
+import { memo, useState, useEffect, useRef, useCallback } from 'react';
 import { cn } from '@/lib/utils';
 import { Message } from '@/stores/useAppStore';
 import { usePreferencesStore } from '@/stores/usePreferencesStore';
-import { Bot, User } from 'lucide-react';
+import { Bot, User, Copy, Check, RefreshCw, RotateCcw, AlertCircle } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import { motion } from 'framer-motion';
+import { Button } from '@/components/ui/button';
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 
 const TYPING_MS_PER_CHAR = 22;
 const TYPING_CHARS_PER_TICK = 2;
 
 interface MessageBubbleProps {
   message: Message;
+  /** Passed only to the last assistant message — shows Regenerate button */
+  onRegenerate?: () => void;
 }
 
-const MessageBubble = memo(function MessageBubble({ message }: MessageBubbleProps) {
+const MessageBubble = memo(function MessageBubble({ message, onRegenerate }: MessageBubbleProps) {
   const isUser = message.role === 'user';
   const showSourcesUnderAnswers = usePreferencesStore((s) => s.showSourcesUnderAnswers);
   const enableAnimations = usePreferencesStore((s) => s.enableAnimations);
 
   const [visibleLength, setVisibleLength] = useState(0);
+  const [copied, setCopied] = useState(false);
   const typewriterIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const contentLengthRef = useRef(message.content.length);
   const prevMessageIdRef = useRef(message.id);
   contentLengthRef.current = message.content.length;
 
+  // Backward-compat: treat messages with known error prefixes as errors too
+  const isError =
+    message.isError ||
+    message.content.startsWith('Sorry, something went wrong') ||
+    message.content.startsWith('Request timed out');
+
   const showSources = !isUser && showSourcesUnderAnswers && message.sources && message.sources.length > 0;
-  const chunkIndices = showSources
-    ? message.sources!.map((s) => s.chunkIndex).sort((a, b) => a - b)
+  // Sort by chunk index so citations follow document order
+  const sortedSources = showSources
+    ? [...message.sources!].sort((a, b) => a.chunkIndex - b.chunkIndex)
     : [];
 
   // Reset visible length when switching to a different message
@@ -77,6 +89,16 @@ const MessageBubble = memo(function MessageBubble({ message }: MessageBubbleProp
     };
   }, [isUser, message.isStreaming, message.content]);
 
+  const handleCopy = useCallback(async () => {
+    try {
+      await navigator.clipboard.writeText(message.content);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    } catch {
+      // Clipboard API unavailable — silently ignore
+    }
+  }, [message.content]);
+
   const Wrapper = enableAnimations ? motion.div : 'div';
   const wrapperProps = enableAnimations
     ? { initial: { opacity: 0, y: 10 }, animate: { opacity: 1, y: 0 }, transition: { duration: 0.3 } }
@@ -84,82 +106,185 @@ const MessageBubble = memo(function MessageBubble({ message }: MessageBubbleProp
 
   const streamingText = message.isStreaming ? message.content.slice(0, visibleLength) : '';
 
+  // Action toolbar shown below AI messages after streaming completes
+  const showToolbar = !isUser && !message.isStreaming;
+
   return (
     <Wrapper
       {...wrapperProps}
-      className={cn('flex gap-3', isUser && 'flex-row-reverse')}
+      role="article"
+      aria-label={isUser ? 'Your message' : 'AI response'}
+      className={cn('flex gap-3 group', isUser && 'flex-row-reverse')}
     >
-      {/* Avatar */}
+      {/* Avatar — decorative only */}
       <div
+        aria-hidden="true"
         className={cn(
-          'w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0',
-          isUser ? 'bg-primary/20' : 'bg-secondary'
+          'w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0 mt-0.5',
+          isUser ? 'bg-primary/20' : isError ? 'bg-destructive/10' : 'bg-secondary',
         )}
       >
         {isUser ? (
           <User className="w-4 h-4 text-primary" />
+        ) : isError ? (
+          <AlertCircle className="w-4 h-4 text-destructive" />
         ) : (
           <Bot className="w-4 h-4 text-foreground" />
         )}
       </div>
 
-      {/* Message content */}
-      <div
-        className={cn(
-          'max-w-[80%] rounded-2xl px-4 py-3',
-          isUser ? 'message-user' : 'message-ai'
-        )}
-      >
-        <div className="prose prose-invert prose-sm max-w-none">
-          {message.isStreaming ? (
-            /* Typewriter: reveal text char-by-char with cursor following */
-            <p className="mb-0 whitespace-pre-wrap break-words inline">
-              {streamingText}
-              <span className="streaming-cursor" aria-hidden />
-            </p>
-          ) : (
-            <ReactMarkdown
-              components={{
-                code: ({ className, children, ...props }) => {
-                  const match = /language-(\w+)/.exec(className || '');
-                  const isInline = !match;
-                  return isInline ? (
-                    <code
-                      className="px-1.5 py-0.5 rounded bg-muted text-primary text-sm font-mono"
-                      {...props}
-                    >
-                      {children}
-                    </code>
-                  ) : (
-                    <pre className="bg-muted/50 rounded-lg p-4 overflow-x-auto my-3">
-                      <code className="text-sm font-mono text-foreground" {...props}>
+      {/* Message + toolbar */}
+      <div className={cn('flex flex-col gap-1', isUser ? 'items-end' : 'items-start', 'max-w-[80%]')}>
+        {/* Message content bubble */}
+        <div
+          className={cn(
+            'rounded-2xl px-4 py-3 w-full',
+            isUser ? 'message-user' : 'message-ai',
+            isError && 'border border-destructive/30 bg-destructive/5',
+          )}
+        >
+          <div className="prose prose-invert prose-sm max-w-none">
+            {message.isStreaming ? (
+              <p className="mb-0 whitespace-pre-wrap break-words inline">
+                {streamingText}
+                <span className="streaming-cursor" aria-hidden />
+              </p>
+            ) : (
+              <ReactMarkdown
+                components={{
+                  code: ({ className, children, ...props }) => {
+                    const match = /language-(\w+)/.exec(className || '');
+                    const isInline = !match;
+                    return isInline ? (
+                      <code
+                        className="px-1.5 py-0.5 rounded bg-muted text-primary text-sm font-mono"
+                        {...props}
+                      >
                         {children}
                       </code>
-                    </pre>
-                  );
-                },
-                p: ({ children }) => <p className="mb-2 last:mb-0">{children}</p>,
-                ul: ({ children }) => <ul className="list-disc pl-4 mb-2">{children}</ul>,
-                ol: ({ children }) => <ol className="list-decimal pl-4 mb-2">{children}</ol>,
-                li: ({ children }) => <li className="mb-1">{children}</li>,
-                h1: ({ children }) => <h1 className="text-lg font-bold mb-2">{children}</h1>,
-                h2: ({ children }) => <h2 className="text-base font-bold mb-2">{children}</h2>,
-                h3: ({ children }) => <h3 className="text-sm font-bold mb-1">{children}</h3>,
-                blockquote: ({ children }) => (
-                  <blockquote className="border-l-2 border-primary pl-4 italic text-muted-foreground">
-                    {children}
-                  </blockquote>
-                ),
-              }}
-            >
-              {message.content}
-            </ReactMarkdown>
+                    ) : (
+                      <pre className="bg-muted/50 rounded-lg p-4 overflow-x-auto my-3">
+                        <code className="text-sm font-mono text-foreground" {...props}>
+                          {children}
+                        </code>
+                      </pre>
+                    );
+                  },
+                  p: ({ children }) => <p className="mb-2 last:mb-0">{children}</p>,
+                  ul: ({ children }) => <ul className="list-disc pl-4 mb-2">{children}</ul>,
+                  ol: ({ children }) => <ol className="list-decimal pl-4 mb-2">{children}</ol>,
+                  li: ({ children }) => <li className="mb-1">{children}</li>,
+                  h1: ({ children }) => <h1 className="text-lg font-bold mb-2">{children}</h1>,
+                  h2: ({ children }) => <h2 className="text-base font-bold mb-2">{children}</h2>,
+                  h3: ({ children }) => <h3 className="text-sm font-bold mb-1">{children}</h3>,
+                  blockquote: ({ children }) => (
+                    <blockquote className="border-l-2 border-primary pl-4 italic text-muted-foreground">
+                      {children}
+                    </blockquote>
+                  ),
+                }}
+              >
+                {message.content}
+              </ReactMarkdown>
+            )}
+          </div>
+
+          {showSources && (
+            <div className="mt-3 pt-3 border-t border-border/50" role="complementary" aria-label="Source passages">
+              <p className="text-[11px] font-medium text-muted-foreground uppercase tracking-wide mb-2">
+                Sources
+              </p>
+              <div className="flex flex-col gap-1.5">
+                {sortedSources.map((src) => (
+                  <div
+                    key={src.chunkIndex}
+                    className="flex items-start gap-2 rounded-lg bg-muted/30 px-2.5 py-2 text-xs"
+                  >
+                    {/* Passage number badge */}
+                    <span className="shrink-0 mt-0.5 font-mono text-[10px] font-semibold text-primary/70 bg-primary/10 rounded px-1 py-0.5 leading-none">
+                      §{src.chunkIndex + 1}
+                    </span>
+
+                    {/* Snippet or fallback label */}
+                    {src.snippet ? (
+                      <span className="text-muted-foreground leading-relaxed line-clamp-2 flex-1">
+                        {src.snippet}
+                      </span>
+                    ) : (
+                      <span className="text-muted-foreground italic flex-1">
+                        Passage {src.chunkIndex + 1}
+                      </span>
+                    )}
+
+                    {/* Relevance score */}
+                    <span
+                      className="shrink-0 text-[10px] tabular-nums text-muted-foreground/60 self-start mt-0.5"
+                      title={`Relevance: ${Math.round(src.score * 100)}%`}
+                    >
+                      {Math.round(src.score * 100)}%
+                    </span>
+                  </div>
+                ))}
+              </div>
+            </div>
           )}
         </div>
-        {showSources && (
-          <p className="mt-3 pt-3 border-t border-border/50 text-muted-foreground text-xs">
-            Sources (chunk indices): {chunkIndices.join(', ')}
-          </p>
+
+        {/* Action toolbar — appears on hover for AI messages, always shown for errors */}
+        {showToolbar && (
+          <div
+            className={cn(
+              'flex items-center gap-0.5 transition-opacity duration-150',
+              isError ? 'opacity-100' : 'opacity-0 group-hover:opacity-100 focus-within:opacity-100',
+            )}
+            role="toolbar"
+            aria-label="Message actions"
+          >
+            {/* Copy */}
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="h-7 w-7 text-muted-foreground hover:text-foreground"
+                  onClick={handleCopy}
+                  aria-label={copied ? 'Copied!' : 'Copy response'}
+                >
+                  {copied ? (
+                    <Check className="w-3.5 h-3.5 text-green-400" aria-hidden="true" />
+                  ) : (
+                    <Copy className="w-3.5 h-3.5" aria-hidden="true" />
+                  )}
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent side="bottom">{copied ? 'Copied!' : 'Copy'}</TooltipContent>
+            </Tooltip>
+
+            {/* Regenerate / Retry */}
+            {onRegenerate && (
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className={cn(
+                      'h-7 w-7 text-muted-foreground hover:text-foreground',
+                      isError && 'text-destructive/70 hover:text-destructive',
+                    )}
+                    onClick={onRegenerate}
+                    aria-label={isError ? 'Retry' : 'Regenerate response'}
+                  >
+                    {isError ? (
+                      <RotateCcw className="w-3.5 h-3.5" aria-hidden="true" />
+                    ) : (
+                      <RefreshCw className="w-3.5 h-3.5" aria-hidden="true" />
+                    )}
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent side="bottom">{isError ? 'Retry' : 'Regenerate'}</TooltipContent>
+              </Tooltip>
+            )}
+          </div>
         )}
       </div>
     </Wrapper>
