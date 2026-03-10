@@ -9,7 +9,7 @@ import { useAppStore } from '@/stores/useAppStore';
 import { getApiBaseUrl, getApiErrorMessage } from '@/lib/api';
 
 interface AuthResponse {
-  user: { id: string; email: string; name: string };
+  user: { id: string; email: string; name: string; role?: string };
   accessToken: string;
 }
 
@@ -64,7 +64,7 @@ const Login = () => {
         return;
       }
       setAuthenticated(true, user, accessToken);
-      navigate('/app');
+      navigate(user.role === 'ADMIN' ? '/app/admin' : '/app');
     } catch (err) {
       // Show actual HTTP/network error cause (e.g. "Failed to fetch"), not a generic message.
       setError(getApiErrorMessage(err, 'Sign in failed. Please try again.'));

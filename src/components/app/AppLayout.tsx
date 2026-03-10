@@ -9,6 +9,7 @@ import { useAppStore } from '@/stores/useAppStore';
 import { usePreferencesStore } from '@/stores/usePreferencesStore';
 import { useIsMobile, useIsDesktop } from '@/hooks/use-mobile';
 import { useDragDrop } from '@/hooks/use-drag-drop';
+import { pingUser } from '@/lib/admin';
 
 /**
  * Prevents any authenticated API call (SSE, chat, documents) from running before
@@ -21,7 +22,7 @@ const AppLayout = () => {
   const isMobile = useIsMobile();
   const isDesktop = useIsDesktop();
   const persist = useAppStore.persist;
-  const { mobileMenuOpen, setMobileMenuOpen, setSidebarOpen } = useAppStore();
+  const { mobileMenuOpen, setMobileMenuOpen, setSidebarOpen, isAuthenticated, accessToken } = useAppStore();
   const enableAnimations = usePreferencesStore((s) => s.enableAnimations);
   const { overlayRef } = useDragDrop();
 
@@ -41,6 +42,15 @@ const AppLayout = () => {
   useEffect(() => {
     if (isDesktop) setSidebarOpen(true);
   }, [isDesktop, setSidebarOpen]);
+
+  useEffect(() => {
+    if (!isAuthenticated || !accessToken) return;
+    pingUser(accessToken).catch(() => { });
+    const interval = setInterval(() => {
+      pingUser(accessToken).catch(() => { });
+    }, 60000);
+    return () => clearInterval(interval);
+  }, [isAuthenticated, accessToken]);
 
   if (!hydrated) {
     return (

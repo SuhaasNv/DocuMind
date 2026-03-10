@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { Menu, Bell, Search, Settings, LogOut, FileText } from 'lucide-react';
-import { Link } from 'react-router-dom';
+import { Link, useLocation } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import {
@@ -21,6 +21,8 @@ interface HeaderProps {
 const Header = ({ title = 'Documents' }: HeaderProps) => {
   const [notifOpen, setNotifOpen] = useState(false);
   const isMobile = useIsMobile();
+  const { pathname } = useLocation();
+  const isAdminPanel = pathname.startsWith('/app/admin');
   const {
     toggleSidebar,
     setMobileMenuOpen,
@@ -72,25 +74,27 @@ const Header = ({ title = 'Documents' }: HeaderProps) => {
 
       {/* Right section */}
       <div className="flex items-center gap-2 sm:gap-4 shrink-0">
-        {/* Search - hidden on small screens to save space */}
-        <div className="hidden lg:flex relative">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground pointer-events-none" />
-          <Input
-            id="search-docs"
-            type="search"
-            placeholder="Search documents... (Cmd+K)"
-            value={documentSearchQuery}
-            onChange={(e) => setDocumentSearchQuery(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === 'Escape') {
-                e.currentTarget.blur();
-                setDocumentSearchQuery('');
-              }
-            }}
-            className="w-48 xl:w-64 pl-10 bg-secondary/50 border-border/50 focus:border-primary/50 min-h-10 transition-all focus:w-64 xl:focus:w-80"
-            aria-label="Search documents by name"
-          />
-        </div>
+        {/* Search - hidden on small screens and on admin panel */}
+        {!isAdminPanel && (
+          <div className="hidden lg:flex relative">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground pointer-events-none" />
+            <Input
+              id="search-docs"
+              type="search"
+              placeholder="Search documents... (Cmd+K)"
+              value={documentSearchQuery}
+              onChange={(e) => setDocumentSearchQuery(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Escape') {
+                  e.currentTarget.blur();
+                  setDocumentSearchQuery('');
+                }
+              }}
+              className="w-48 xl:w-64 pl-10 bg-secondary/50 border-border/50 focus:border-primary/50 min-h-10 transition-all focus:w-64 xl:focus:w-80"
+              aria-label="Search documents by name"
+            />
+          </div>
+        )}
       </div>
 
       {/* Notifications */}

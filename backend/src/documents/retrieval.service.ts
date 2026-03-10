@@ -83,12 +83,7 @@ export class RetrievalService {
         : Promise.resolve([]),
     ]);
 
-    const merged = this.mergeAndRank(
-      denseRows,
-      lexicalRows,
-      k,
-      documentId,
-    );
+    const merged = this.mergeAndRank(denseRows, lexicalRows, k, documentId);
 
     return this.trimByScoreDrop(merged);
   }
@@ -173,9 +168,7 @@ export class RetrievalService {
   private async runLexicalRetrieval(
     documentId: string,
     keywords: string[],
-  ): Promise<
-    Array<{ id: string; content: string; chunk_index: number }>
-  > {
+  ): Promise<Array<{ id: string; content: string; chunk_index: number }>> {
     if (keywords.length === 0) return [];
 
     const patterns = keywords.map((kw) => `%${this.escapeIlikePattern(kw)}%`);

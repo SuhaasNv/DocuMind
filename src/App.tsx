@@ -23,6 +23,7 @@ import BackendHealthBanner from "./components/app/BackendHealthBanner";
 import ProtectedRoute from "./components/app/ProtectedRoute";
 import ScrollToTop from "./components/ScrollToTop";
 import PublicLayout from "./components/landing/PublicLayout";
+import AdminDashboard from "./pages/admin/AdminDashboard";
 
 const queryClient = new QueryClient();
 
@@ -55,16 +56,17 @@ const App = () => (
             <Route path="/login" element={<Login />} />
             <Route path="/register" element={<Register />} />
           </Route>
-          
+
           {/* App routes (protected; sidebar layout) */}
           <Route path="/app" element={<ProtectedRoute><AppLayout /></ProtectedRoute>}>
             <Route index element={<Dashboard />} />
             <Route path="settings" element={<SettingsPage />} />
+            <Route path="admin" element={<AdminDashboard />} />
           </Route>
           <Route path="/chat/:documentId" element={<ProtectedRoute><AppLayout /></ProtectedRoute>}>
             <Route index element={<ChatPage />} />
           </Route>
-          
+
           {/* Catch-all */}
           <Route path="*" element={<NotFound />} />
         </Routes>

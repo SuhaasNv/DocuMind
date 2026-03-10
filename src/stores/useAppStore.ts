@@ -44,7 +44,7 @@ export interface AppNotification {
 interface AppState {
   // Auth state
   isAuthenticated: boolean;
-  user: { id: string; email: string; name: string } | null;
+  user: { id: string; email: string; name: string; role?: string } | null;
   accessToken: string | null;
 
   // Documents state
@@ -72,7 +72,7 @@ interface AppState {
   setAbortActiveSSE: (fn: (() => void) | null) => void;
 
   // Actions
-  setAuthenticated: (auth: boolean, user?: { id: string; email: string; name: string } | null, accessToken?: string | null) => void;
+  setAuthenticated: (auth: boolean, user?: { id: string; email: string; name: string; role?: string } | null, accessToken?: string | null) => void;
   setDocuments: (documents: Document[]) => void;
   addDocument: (doc: Document) => void;
   updateDocument: (id: string, updates: Partial<Document>) => void;

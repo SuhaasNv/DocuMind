@@ -88,7 +88,7 @@ export class GeminiClient {
       throw err;
     }
     if (!yieldedAny) {
-      yield "The model did not return any text. It may have been blocked or the response may be empty.";
+      yield 'The model did not return any text. It may have been blocked or the response may be empty.';
     }
   }
 

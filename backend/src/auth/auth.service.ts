@@ -6,7 +6,7 @@ import {
 } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import * as bcrypt from 'bcrypt';
-import { Prisma } from '../../generated/prisma/client.js';
+import { Prisma, Role } from '../../generated/prisma/client.js';
 import { PrismaService } from '../prisma/prisma.service.js';
 import { RegisterDto } from './dto/register.dto.js';
 import { LoginDto } from './dto/login.dto.js';
@@ -18,6 +18,7 @@ export interface AuthUser {
   id: string;
   email: string;
   name: string;
+  role: Role;
 }
 
 export interface AuthResponse {
@@ -47,6 +48,7 @@ export class AuthService {
           email: dto.email.toLowerCase(),
           passwordHash,
           name: dto.name.trim(),
+          role: Role.USER, // Admin is seeded only; cannot register as admin
         },
       });
       return this.buildAuthResponse(user);
@@ -103,22 +105,36 @@ export class AuthService {
       where: { id: payload.sub },
     });
     if (!user) return null;
-    return { id: user.id, email: user.email, name: user.name };
+    return { id: user.id, email: user.email, name: user.name, role: user.role };
+  }
+
+  async ping(userId: string): Promise<void> {
+    await this.prisma.user.update({
+      where: { id: userId },
+      data: { lastActiveAt: new Date() },
+    });
   }
 
   private buildAuthResponse(user: {
     id: string;
     email: string;
     name: string;
+    role: Role;
   }): AuthResponse {
     const payload: JwtPayload = {
       sub: user.id,
       email: user.email,
       name: user.name,
+      role: user.role,
     };
     const accessToken = this.jwtService.sign(payload);
     return {
-      user: { id: user.id, email: user.email, name: user.name },
+      user: {
+        id: user.id,
+        email: user.email,
+        name: user.name,
+        role: user.role,
+      },
       accessToken,
     };
   }

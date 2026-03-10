@@ -54,6 +54,7 @@ export const useDragDrop = () => {
     }, []);
 
     const handleDragEnter = (e: DragEvent) => {
+        if (pathname.startsWith('/app/admin')) return;
         e.preventDefault();
         e.stopPropagation();
         dragCounter.current += 1;
@@ -90,6 +91,7 @@ export const useDragDrop = () => {
     };
 
     const handleDrop = async (e: DragEvent) => {
+        if (pathname.startsWith('/app/admin')) return;
         e.preventDefault();
         e.stopPropagation();
         dragCounter.current = 0;
