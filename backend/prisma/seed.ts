@@ -1,9 +1,9 @@
 import { PrismaClient, Role } from '../generated/prisma/client';
 import { PrismaPg } from '@prisma/adapter-pg';
 import * as bcrypt from 'bcrypt';
+import { getDatabaseUrlOrThrow } from '../database-url';
 
-const connectionString = process.env.DATABASE_URL;
-if (!connectionString) throw new Error('DATABASE_URL is required');
+const connectionString = getDatabaseUrlOrThrow('prisma-seed');
 const adapter = new PrismaPg({ connectionString });
 const prisma = new PrismaClient({ adapter });
 

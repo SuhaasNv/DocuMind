@@ -1,20 +1,25 @@
 import { NestFactory } from '@nestjs/core';
 import { ValidationPipe } from '@nestjs/common';
 import { AppModule } from './app.module.js';
+import { getDatabaseUrlFromEnv } from '../database-url.js';
 
 function validateEnv(): void {
-  const required = ['JWT_SECRET', 'DATABASE_URL'] as const;
-  const missing = required.filter((key) => {
+  const required = ['JWT_SECRET'] as const;
+  const missing: string[] = required.filter((key) => {
     const v = process.env[key];
     return v === undefined || v === '';
   });
+  if (!getDatabaseUrlFromEnv()) {
+    missing.push('DATABASE_URL');
+  }
   if (missing.length > 0) {
     console.error(
       `[FATAL] Missing required environment variables: ${missing.join(', ')}. Set them in .env (see .env.example).`,
     );
     process.exit(1);
   }
-  if (!process.env.DATABASE_URL?.includes('5432')) {
+  const databaseUrl = getDatabaseUrlFromEnv();
+  if (databaseUrl && !databaseUrl.includes('5432')) {
     console.warn(
       '[WARN] DATABASE_URL does not use port 5432. If using docker-compose Postgres, use postgresql://...@localhost:5432/...',
     );

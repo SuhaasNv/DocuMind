@@ -3,19 +3,12 @@
 import { config } from "dotenv";
 import { resolve } from "path";
 import { defineConfig } from "prisma/config";
+import { getDatabaseUrlOrThrow } from "./database-url";
 
 // Load .env from current working directory (run "npx prisma migrate deploy" from backend/)
 config({ path: resolve(process.cwd(), ".env") });
 
-const databaseUrl =
-  process.env["DATABASE_URL"] ?? "postgresql://localhost:5432/insight_garden";
-if (!databaseUrl || databaseUrl === "postgresql://localhost:5432/insight_garden") {
-  if (process.env["DATABASE_URL"] === undefined) {
-    console.warn(
-      "[prisma] DATABASE_URL not set; using placeholder for generate/migrate config. Set DATABASE_URL for real DB connections.",
-    );
-  }
-}
+const databaseUrl = getDatabaseUrlOrThrow("prisma");
 if (
   databaseUrl &&
   !databaseUrl.includes(":5432/") &&
