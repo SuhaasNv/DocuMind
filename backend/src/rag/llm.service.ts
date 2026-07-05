@@ -1,4 +1,4 @@
-import { Injectable, NotImplementedException } from '@nestjs/common';
+import { Injectable } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { GeminiClient } from './gemini.client.js';
 
@@ -8,7 +8,6 @@ export const LLM_PROVIDER_DEFAULT = 'stub';
  * Configurable LLM service: stub, ollama, openai, or gemini.
  * - complete(prompt): full response (no streaming).
  * - stream(prompt, signal): async generator of text tokens; supports abort via signal.
- * Ollama and Gemini support streaming; OpenAI streaming not implemented (throws NotImplementedException).
  */
 @Injectable()
 export class LlmService {
@@ -40,8 +39,8 @@ export class LlmService {
    * Stream tokens from the configured LLM. Yields text chunks only.
    * Pass AbortSignal to cancel (e.g. on client disconnect).
    * - Ollama: streaming via /api/generate with stream: true.
+   * - OpenAI: streaming via /v1/chat/completions with stream: true.
    * - Stub: yields a placeholder message incrementally.
-   * - OpenAI: throws NotImplementedException (extensible for future Gemini/OpenAI streaming).
    */
   async *stream(
     prompt: string,
@@ -55,9 +54,8 @@ export class LlmService {
         yield* this.geminiClient.stream(prompt, signal);
         return;
       case 'openai':
-        throw new NotImplementedException(
-          'OpenAI streaming is not implemented. Use LLM_PROVIDER=ollama for streaming, or POST /documents/:id/chat for non-streaming.',
-        );
+        yield* this.streamOpenAI(prompt, signal);
+        return;
       default:
         yield* this.streamStub(prompt);
     }
@@ -228,6 +226,73 @@ export class LlmService {
         const data = JSON.parse(buffer.trim()) as { response?: string };
         if (data.response && typeof data.response === 'string') {
           yield data.response;
+        }
+      }
+    } finally {
+      reader.releaseLock();
+    }
+  }
+
+  /**
+   * OpenAI streaming: POST /v1/chat/completions with stream: true.
+   * Parses the `data: {...}` SSE lines and yields each delta's content, stopping at `data: [DONE]`.
+   */
+  private async *streamOpenAI(
+    prompt: string,
+    signal?: AbortSignal,
+  ): AsyncGenerator<string, void, undefined> {
+    const apiKey = this.config.get<string>('OPENAI_API_KEY');
+    if (!apiKey) {
+      throw new Error('OPENAI_API_KEY is required when LLM_PROVIDER=openai');
+    }
+    const res = await fetch('https://api.openai.com/v1/chat/completions', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${apiKey}`,
+      },
+      body: JSON.stringify({
+        model: this.openaiModel,
+        messages: [{ role: 'user', content: prompt }],
+        stream: true,
+      }),
+      signal,
+    });
+
+    if (!res.ok) {
+      const err = await res.text();
+      throw new Error(`OpenAI request failed: ${res.status} ${err}`);
+    }
+
+    const body = res.body;
+    if (!body) {
+      throw new Error('OpenAI returned no body');
+    }
+
+    const reader = body.getReader();
+    const decoder = new TextDecoder();
+    let buffer = '';
+
+    try {
+      while (true) {
+        if (signal?.aborted) break;
+        const { done, value } = await reader.read();
+        if (done) break;
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split('\n');
+        buffer = lines.pop() ?? '';
+        for (const line of lines) {
+          const trimmed = line.trim();
+          if (!trimmed.startsWith('data:')) continue;
+          const payload = trimmed.slice('data:'.length).trim();
+          if (payload === '[DONE]') return;
+          const data = JSON.parse(payload) as {
+            choices?: Array<{ delta?: { content?: string } }>;
+          };
+          const token = data.choices?.[0]?.delta?.content;
+          if (typeof token === 'string' && token.length > 0) {
+            yield token;
+          }
         }
       }
     } finally {

@@ -169,6 +169,7 @@ export class RagOrchestratorService {
     let firstTokenRecorded = false;
     const t0Llm = performance.now();
 
+    let tokenYielded = false;
     try {
       for await (const token of this.llmService.stream(prompt, signal)) {
         if (signal?.aborted) break;
@@ -176,7 +177,16 @@ export class RagOrchestratorService {
           llmFirstTokenMs = performance.now() - t0Llm;
           firstTokenRecorded = true;
         }
+        tokenYielded = true;
         yield { type: 'delta', data: token };
+      }
+    } catch (err) {
+      if (!signal?.aborted && !tokenYielded) {
+        const message = err instanceof Error ? err.message : 'unknown error';
+        yield {
+          type: 'delta',
+          data: `Sorry, the answer could not be generated (${message}).`,
+        };
       }
     } finally {
       // Always send 'done' so the frontend can exit streaming state (stops blinking cursor).

@@ -46,7 +46,12 @@ export function chunkText(
     const content = text.slice(start, end);
     chunks.push({ content, index });
     if (end >= text.length) break;
-    start += step;
+    let nextStart = start + step;
+    // Snap forward to the next word boundary so the next chunk doesn't start mid-word.
+    while (nextStart < text.length && !/\s/.test(text[nextStart - 1])) {
+      nextStart += 1;
+    }
+    start = nextStart;
     index += 1;
   }
 
