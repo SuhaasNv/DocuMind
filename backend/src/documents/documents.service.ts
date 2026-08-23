@@ -14,6 +14,7 @@ import { DocumentChunkService } from '../chunks/document-chunk.service.js';
 import { InjectQueue } from '@nestjs/bullmq';
 import { Queue } from 'bullmq';
 import type { DocumentResponseDto } from './dto/document-response.dto.js';
+import { ChatCacheService } from '../rag/chat-cache.service.js';
 
 const PDF_MIME = 'application/pdf';
 const MAX_FILE_SIZE_BYTES = 50 * 1024 * 1024; // 50MB
@@ -28,6 +29,7 @@ export class DocumentsService {
     private readonly prisma: PrismaService,
     private readonly documentChunkService: DocumentChunkService,
     @InjectQueue(QUEUE_NAME) private readonly documentQueue: Queue,
+    private readonly chatCache: ChatCacheService,
   ) {}
 
   async createFromUpload(
@@ -108,6 +110,7 @@ export class DocumentsService {
       throw new ForbiddenException('Access denied');
     }
     await this.prisma.document.delete({ where: { id } });
+    void this.chatCache.invalidateDocument(id);
 
     if (document.filePath) {
       try {

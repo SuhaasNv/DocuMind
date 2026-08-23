@@ -22,6 +22,8 @@ export interface RetrievalInput {
   documentId: string;
   query: string;
   topK?: number;
+  /** Precomputed query embedding (skips the embed call when provided). */
+  queryEmbedding?: number[];
 }
 
 /**
@@ -60,7 +62,9 @@ export class RetrievalService {
         where: { id: documentId },
         select: { id: true, userId: true, status: true },
       }),
-      this.embeddingService.embed(trimmedQuery),
+      input.queryEmbedding
+        ? Promise.resolve(input.queryEmbedding)
+        : this.embeddingService.embed(trimmedQuery),
     ]);
 
     if (!document) {

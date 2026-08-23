@@ -8,6 +8,7 @@ import { PrismaService } from '../prisma/prisma.service.js';
 import { EmbeddingService } from '../embedding/embedding.service.js';
 import { DocumentChunkService } from '../chunks/document-chunk.service.js';
 import { chunkText } from '../lib/chunking.js';
+import { ChatCacheService } from '../rag/chat-cache.service.js';
 
 const QUEUE_NAME = 'document-processing';
 
@@ -37,6 +38,7 @@ export class DocumentProcessor extends WorkerHost {
     private readonly prisma: PrismaService,
     private readonly embeddingService: EmbeddingService,
     private readonly documentChunkService: DocumentChunkService,
+    private readonly chatCache: ChatCacheService,
   ) {
     super();
   }
@@ -57,6 +59,9 @@ export class DocumentProcessor extends WorkerHost {
       );
       return;
     }
+
+    // Chunks are about to change; cached answers for this document are stale.
+    await this.chatCache.invalidateDocument(documentId);
 
     const ok = await this.updateProgress(documentId, document.userId, {
       status: DocumentStatus.PROCESSING,

@@ -1,0 +1,217 @@
+import { Injectable, Logger, OnModuleDestroy } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
+import { createHash } from 'node:crypto';
+import { Redis } from 'ioredis';
+import { getRedisConnection } from '../lib/redis-connection.js';
+import type { ChatSourceDto } from '../documents/dto/chat-response.dto.js';
+
+export interface CachedChat {
+  answer: string;
+  sources: ChatSourceDto[];
+}
+
+interface CacheEntry extends CachedChat {
+  question: string;
+  embedding?: number[];
+}
+
+/** Cap on entries scanned per document for the semantic pass. */
+const MAX_SEMANTIC_ENTRIES = 100;
+
+/** Cosine similarity between two raw vectors; -1 on length mismatch. */
+export function cosineSimilarity(a: number[], b: number[]): number {
+  if (a.length !== b.length || a.length === 0) return -1;
+  let dot = 0;
+  let na = 0;
+  let nb = 0;
+  for (let i = 0; i < a.length; i++) {
+    dot += a[i] * b[i];
+    na += a[i] * a[i];
+    nb += b[i] * b[i];
+  }
+  const denom = Math.sqrt(na) * Math.sqrt(nb);
+  return denom === 0 ? -1 : dot / denom;
+}
+
+/** Case/whitespace-insensitive form used for exact-match keys. */
+export function normalizeQuestion(question: string): string {
+  return question.trim().toLowerCase().replace(/\s+/g, ' ');
+}
+
+/**
+ * Two-layer chat cache on Redis.
+ *
+ * L1 exact: hash(normalized question) + documentId + settings key.
+ * L2 semantic: cosine-compare the query embedding against the document's
+ * cached entries; serve when similarity ≥ CHAT_CACHE_SEMANTIC_THRESHOLD.
+ * Query embeddings themselves are cached under their own exact key.
+ *
+ * Keys are scoped per document AND per answer-affecting settings (topK),
+ * indexed in a per-document set so invalidation needs no SCAN.
+ */
+@Injectable()
+export class ChatCacheService implements OnModuleDestroy {
+  private readonly logger = new Logger(ChatCacheService.name);
+  private readonly client: Redis;
+  private readonly ttlSeconds: number;
+  private readonly threshold: number;
+
+  constructor(config: ConfigService) {
+    this.ttlSeconds = Number(
+      config.get<string | number>('CHAT_CACHE_TTL_SECONDS', 3600),
+    );
+    this.threshold = Number(
+      config.get<string | number>('CHAT_CACHE_SEMANTIC_THRESHOLD', 0.95),
+    );
+    this.client = new Redis({
+      ...getRedisConnection(),
+      lazyConnect: true,
+      maxRetriesPerRequest: 1,
+    });
+    // Cache is best-effort: never let Redis trouble break chat.
+    this.client.on('error', (err: Error) => {
+      this.logger.warn(`Redis cache error: ${err.message}`);
+    });
+  }
+
+  onModuleDestroy(): void {
+    this.client.disconnect();
+  }
+
+  private hash(text: string): string {
+    return createHash('sha256').update(text).digest('hex').slice(0, 32);
+  }
+
+  private entryKey(
+    documentId: string,
+    settingsKey: string,
+    question: string,
+  ): string {
+    return `cc:${documentId}:${settingsKey}:${this.hash(normalizeQuestion(question))}`;
+  }
+
+  private indexKey(documentId: string): string {
+    return `cc:index:${documentId}`;
+  }
+
+  private qembKey(question: string): string {
+    return `cc:qemb:${this.hash(normalizeQuestion(question))}`;
+  }
+
+  async getExact(
+    documentId: string,
+    settingsKey: string,
+    question: string,
+  ): Promise<CachedChat | null> {
+    try {
+      const raw = await this.client.get(
+        this.entryKey(documentId, settingsKey, question),
+      );
+      if (!raw) return null;
+      const entry = JSON.parse(raw) as CacheEntry;
+      return { answer: entry.answer, sources: entry.sources };
+    } catch {
+      return null;
+    }
+  }
+
+  async getSemantic(
+    documentId: string,
+    settingsKey: string,
+    queryEmbedding: number[],
+  ): Promise<{ hit: CachedChat; similarity: number } | null> {
+    try {
+      const keys = (
+        await this.client.smembers(this.indexKey(documentId))
+      ).filter((k) => k.startsWith(`cc:${documentId}:${settingsKey}:`));
+      if (keys.length === 0) return null;
+      const values = await this.client.mget(
+        keys.slice(0, MAX_SEMANTIC_ENTRIES),
+      );
+      let best: { entry: CacheEntry; similarity: number } | null = null;
+      for (const raw of values) {
+        if (!raw) continue;
+        const entry = JSON.parse(raw) as CacheEntry;
+        if (!entry.embedding) continue;
+        const sim = cosineSimilarity(queryEmbedding, entry.embedding);
+        if (sim >= this.threshold && (!best || sim > best.similarity)) {
+          best = { entry, similarity: sim };
+        }
+      }
+      if (!best) return null;
+      return {
+        hit: { answer: best.entry.answer, sources: best.entry.sources },
+        similarity: best.similarity,
+      };
+    } catch {
+      return null;
+    }
+  }
+
+  async store(
+    documentId: string,
+    settingsKey: string,
+    question: string,
+    embedding: number[] | null,
+    answer: string,
+    sources: ChatSourceDto[],
+  ): Promise<void> {
+    try {
+      const key = this.entryKey(documentId, settingsKey, question);
+      const entry: CacheEntry = {
+        question: normalizeQuestion(question),
+        answer,
+        sources,
+        ...(embedding ? { embedding } : {}),
+      };
+      await this.client
+        .multi()
+        .set(key, JSON.stringify(entry), 'EX', this.ttlSeconds)
+        .sadd(this.indexKey(documentId), key)
+        .expire(this.indexKey(documentId), this.ttlSeconds)
+        .exec();
+    } catch {
+      /* best-effort */
+    }
+  }
+
+  async getQueryEmbedding(question: string): Promise<number[] | null> {
+    try {
+      const raw = await this.client.get(this.qembKey(question));
+      return raw ? (JSON.parse(raw) as number[]) : null;
+    } catch {
+      return null;
+    }
+  }
+
+  async storeQueryEmbedding(
+    question: string,
+    embedding: number[],
+  ): Promise<void> {
+    try {
+      await this.client.set(
+        this.qembKey(question),
+        JSON.stringify(embedding),
+        'EX',
+        this.ttlSeconds,
+      );
+    } catch {
+      /* best-effort */
+    }
+  }
+
+  /** Drop every cached answer for a document (reprocess or delete). */
+  async invalidateDocument(documentId: string): Promise<void> {
+    try {
+      const index = this.indexKey(documentId);
+      const keys = await this.client.smembers(index);
+      if (keys.length > 0) await this.client.del(...keys);
+      await this.client.del(index);
+      this.logger.log(
+        `[chat-cache] invalidated ${keys.length} entries for document ${documentId}`,
+      );
+    } catch {
+      /* best-effort */
+    }
+  }
+}

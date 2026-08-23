@@ -1,7 +1,9 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, Logger } from '@nestjs/common';
 import { RetrievalService } from './retrieval.service.js';
 import { PromptService } from '../rag/prompt.service.js';
 import { LlmService } from '../rag/llm.service.js';
+import { ChatCacheService } from '../rag/chat-cache.service.js';
+import { EmbeddingService } from '../embedding/embedding.service.js';
 import { logRagLatency } from '../rag/rag-latency.logger.js';
 import type {
   ChatResponseDto,
@@ -27,7 +29,7 @@ export interface RagChatInput {
 /** Stream event: delta (token) or done (sources). Transport-agnostic; consumed by SSE or other transports. */
 export type RagStreamEvent =
   | { type: 'delta'; data: string }
-  | { type: 'done'; data: { sources: ChatSourceDto[] } };
+  | { type: 'done'; data: { sources: ChatSourceDto[]; cached?: boolean } };
 
 /**
  * RAG v1: grounded answer generation without streaming.
@@ -36,11 +38,58 @@ export type RagStreamEvent =
  */
 @Injectable()
 export class RagOrchestratorService {
+  private readonly logger = new Logger(RagOrchestratorService.name);
+
   constructor(
     private readonly retrievalService: RetrievalService,
     private readonly promptService: PromptService,
     private readonly llmService: LlmService,
+    private readonly chatCache: ChatCacheService,
+    private readonly embeddingService: EmbeddingService,
   ) {}
+
+  /**
+   * Cache pre-checks shared by chat() and streamAnswer(). Callers enforce
+   * document ownership BEFORE the orchestrator runs, so serving from cache
+   * cannot leak across users. Returns the hit (if any) and the query
+   * embedding (cached or freshly computed) for retrieval reuse.
+   */
+  private async checkCache(
+    documentId: string,
+    settingsKey: string,
+    question: string,
+    t0: number,
+  ): Promise<{ hit: ChatResponseDto | null; queryEmbedding: number[] }> {
+    const exact = await this.chatCache.getExact(
+      documentId,
+      settingsKey,
+      question,
+    );
+    if (exact) {
+      this.logger.log(
+        `[chat-cache] exact hit doc=${documentId} in ${Math.round(performance.now() - t0)}ms`,
+      );
+      return { hit: { ...exact, cached: true }, queryEmbedding: [] };
+    }
+    let queryEmbedding = await this.chatCache.getQueryEmbedding(question);
+    if (!queryEmbedding) {
+      queryEmbedding = await this.embeddingService.embed(question);
+      void this.chatCache.storeQueryEmbedding(question, queryEmbedding);
+    }
+    const semantic = await this.chatCache.getSemantic(
+      documentId,
+      settingsKey,
+      queryEmbedding,
+    );
+    if (semantic) {
+      this.logger.log(
+        `[chat-cache] semantic hit doc=${documentId} sim=${semantic.similarity.toFixed(4)} in ${Math.round(performance.now() - t0)}ms`,
+      );
+      return { hit: { ...semantic.hit, cached: true }, queryEmbedding };
+    }
+    this.logger.log(`[chat-cache] miss doc=${documentId}`);
+    return { hit: null, queryEmbedding };
+  }
 
   /**
    * Run RAG: retrieve chunks, build grounded prompt, call LLM, return answer and sources.
@@ -53,12 +102,22 @@ export class RagOrchestratorService {
       return { answer: NO_INFO_ANSWER, sources: [] };
     }
 
+    const settingsKey = `k${topK}`;
+    const cache = await this.checkCache(
+      documentId,
+      settingsKey,
+      trimmedQuestion,
+      performance.now(),
+    );
+    if (cache.hit) return cache.hit;
+
     const t0Retrieval = performance.now();
     const chunks = await this.retrievalService.retrieve({
       userId,
       documentId,
       query: trimmedQuestion,
       topK,
+      queryEmbedding: cache.queryEmbedding,
     });
     const retrievalMs = performance.now() - t0Retrieval;
 
@@ -96,6 +155,14 @@ export class RagOrchestratorService {
         snippet: this.makeSnippet(c.content),
       }));
 
+    void this.chatCache.store(
+      documentId,
+      settingsKey,
+      trimmedQuestion,
+      cache.queryEmbedding,
+      answer,
+      sources,
+    );
     return { answer, sources };
   }
 
@@ -132,12 +199,40 @@ export class RagOrchestratorService {
       return;
     }
 
+    const settingsKey = `k${topK}`;
+    const cache = await this.checkCache(
+      documentId,
+      settingsKey,
+      trimmedQuestion,
+      performance.now(),
+    );
+    if (cache.hit) {
+      // Replay the cached answer over the same SSE protocol, in word-group
+      // deltas, so the client code path is identical to a live stream.
+      const words = cache.hit.answer.split(/(\s+)/);
+      let piece = '';
+      for (const w of words) {
+        piece += w;
+        if (piece.length >= 60) {
+          yield { type: 'delta', data: piece };
+          piece = '';
+        }
+      }
+      if (piece.length > 0) yield { type: 'delta', data: piece };
+      yield {
+        type: 'done',
+        data: { sources: cache.hit.sources, cached: true },
+      };
+      return;
+    }
+
     const t0Retrieval = performance.now();
     const chunks = await this.retrievalService.retrieve({
       userId,
       documentId,
       query: trimmedQuestion,
       topK,
+      queryEmbedding: cache.queryEmbedding,
     });
     const retrievalMs = performance.now() - t0Retrieval;
 
@@ -170,6 +265,8 @@ export class RagOrchestratorService {
     const t0Llm = performance.now();
 
     let tokenYielded = false;
+    let fullAnswer = '';
+    let errored = false;
     try {
       for await (const token of this.llmService.stream(prompt, signal)) {
         if (signal?.aborted) break;
@@ -178,9 +275,11 @@ export class RagOrchestratorService {
           firstTokenRecorded = true;
         }
         tokenYielded = true;
+        fullAnswer += token;
         yield { type: 'delta', data: token };
       }
     } catch (err) {
+      errored = true;
       if (!signal?.aborted && !tokenYielded) {
         const message = err instanceof Error ? err.message : 'unknown error';
         yield {
@@ -203,6 +302,16 @@ export class RagOrchestratorService {
           }));
       })();
       logRagLatency({ retrievalMs, promptBuildMs, llmFirstTokenMs });
+      if (!errored && !signal?.aborted && fullAnswer.length > 0) {
+        void this.chatCache.store(
+          documentId,
+          settingsKey,
+          trimmedQuestion,
+          cache.queryEmbedding,
+          fullAnswer,
+          sources,
+        );
+      }
       yield { type: 'done', data: { sources } };
     }
   }

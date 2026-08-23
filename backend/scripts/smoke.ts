@@ -180,8 +180,8 @@ async function streamChat(
       if (event === 'delta') {
         deltas++;
         try {
-          const parsed = JSON.parse(data) as { text?: string };
-          text += parsed.text ?? '';
+          const parsed = JSON.parse(data) as string | { text?: string };
+          text += typeof parsed === 'string' ? parsed : (parsed.text ?? '');
         } catch {
           text += data;
         }
@@ -319,11 +319,11 @@ async function main(): Promise<void> {
     `status ${hostile.status}`,
   );
 
-  // 9. SSE stream
+  // 9. SSE stream — fresh question so this exercises the LIVE stream path
   const s1 = await streamChat(
     a.accessToken,
     doc.id,
-    'What is the secret project codename?',
+    'What does the background worker do with uploads?',
   );
   check(
     'SSE: deltas arrive and stream terminates',
@@ -336,15 +336,34 @@ async function main(): Promise<void> {
     s1.doneEvent?.slice(0, 80) ?? '',
   );
 
-  // 10. Repeat query (cache observability — Phase 3 makes this a hit)
+  // 10. Repeat query must be served from the chat cache (Phase 3)
   const s2 = await streamChat(
     a.accessToken,
     doc.id,
-    'What is the secret project codename?',
+    'What does the background worker do with uploads?',
   );
   const cached = (s2.doneEvent ?? '').includes('"cached":true');
-  console.log(
-    `[INFO] repeat stream: ${s2.ms}ms (first: ${s1.ms}ms) cached=${cached}`,
+  check(
+    'repeat query served from cache',
+    cached,
+    `${s2.ms}ms vs first ${s1.ms}ms`,
+  );
+  check(
+    'cached replay produces same non-empty answer text',
+    s2.text.length > 0 && s2.text === s1.text,
+  );
+  // Semantic layer: same meaning, different whitespace/case → exact-normalized
+  // hit; a paraphrase relies on embedding similarity, so only assert the
+  // normalized variant deterministically.
+  const s3 = await streamChat(
+    a.accessToken,
+    doc.id,
+    '  WHAT does the   background worker do with uploads?  ',
+  );
+  check(
+    'normalized variant of query is a cache hit',
+    (s3.doneEvent ?? '').includes('"cached":true'),
+    `${s3.ms}ms`,
   );
 
   // 11. Delete + cleanup

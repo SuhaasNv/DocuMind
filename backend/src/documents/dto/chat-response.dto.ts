@@ -8,4 +8,6 @@ export interface ChatSourceDto {
 export interface ChatResponseDto {
   answer: string;
   sources: ChatSourceDto[];
+  /** True when served from the chat cache (exact or semantic hit). */
+  cached?: boolean;
 }
