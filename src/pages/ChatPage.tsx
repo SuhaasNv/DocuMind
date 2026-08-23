@@ -15,7 +15,8 @@ import { usePreferencesStore } from '@/stores/usePreferencesStore';
 import { sendChatMessage, stopChatStream } from '@/lib/chatStream';
 import { fetchCollection } from '@/lib/collections';
 import { createInsight } from '@/lib/insights';
-import { getApiErrorMessage } from '@/lib/api';
+import { citationIndex } from '@/components/chat/markdownComponents';
+import { getApiBaseUrlOrThrow, getApiErrorMessage } from '@/lib/api';
 import { toast } from 'sonner';
 
 const SCROLL_THRESHOLD_PX = 120;
@@ -187,6 +188,65 @@ const ChatPage = () => {
     [chatKey, collectionId, documentId]
   );
 
+  /**
+   * Creates a public share link for an assistant answer: POSTs the preceding
+   * user question, the answer, and its full sources (whitelist shape: marker,
+   * pages, quote, snippet — the backend re-whitelists) to /share, then copies
+   * the public URL to the clipboard.
+   */
+  const handleShare = useCallback(
+    async (messageId: string) => {
+      if (!chatKey) return;
+      const state = useAppStore.getState();
+      const msgs = state.conversations[chatKey]?.messages ?? [];
+      const idx = msgs.findIndex((m) => m.id === messageId);
+      if (idx === -1) return;
+      const msg = msgs[idx];
+      const question =
+        msgs
+          .slice(0, idx)
+          .reverse()
+          .find((m) => m.role === 'user')?.content ?? '';
+      try {
+        const token = state.accessToken;
+        if (!token) throw new Error('Not authenticated');
+        // Same marker order as the displayed sources list / inline chips.
+        const { sorted } = citationIndex(msg.sources ?? []);
+        const res = await fetch(`${getApiBaseUrlOrThrow()}/share`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${token}`,
+          },
+          body: JSON.stringify({
+            question: (question || 'Shared answer').slice(0, 4000),
+            answer: msg.content.slice(0, 20000),
+            sources: sorted.slice(0, 20).map((s, i) => ({
+              marker: s.marker ?? i + 1,
+              pageStart: s.pageStart ?? undefined,
+              pageEnd: s.pageEnd ?? undefined,
+              quote: s.quote?.slice(0, 2000),
+              snippet: (s.snippet ?? '').slice(0, 1000),
+            })),
+          }),
+        });
+        if (!res.ok) throw new Error(`Request failed (${res.status})`);
+        const data = (await res.json()) as { token: string };
+        const url = `${window.location.origin}/s/${data.token}`;
+        try {
+          await navigator.clipboard.writeText(url);
+          toast.success('Public link copied to clipboard');
+        } catch {
+          toast.success(`Share link created: ${url}`);
+        }
+      } catch (err) {
+        toast.error(getApiErrorMessage(err, 'Could not create share link'));
+        throw err;
+      }
+    },
+    [chatKey]
+  );
+
   if (!target) {
     return (
       <>
@@ -292,17 +352,16 @@ const ChatPage = () => {
                   const isLastAssistant =
                     message.role === 'assistant' &&
                     messages.filter((m) => m.role === 'assistant').at(-1)?.id === message.id;
+                  const isCompletedAnswer =
+                    message.role === 'assistant' && !message.isStreaming && !message.isError;
                   return (
                     <MessageBubble
                       key={message.id}
                       message={message}
                       onRegenerate={isLastAssistant && !isStreaming ? handleRegenerate : undefined}
                       onOpenSource={setViewerSource}
-                      onPin={
-                        message.role === 'assistant' && !message.isStreaming && !message.isError
-                          ? () => handlePin(message.id)
-                          : undefined
-                      }
+                      onPin={isCompletedAnswer ? () => handlePin(message.id) : undefined}
+                      onShare={isCompletedAnswer ? () => handleShare(message.id) : undefined}
                     />
                   );
                 })}

@@ -25,7 +25,16 @@ import { stopAllChatStreams } from '@/lib/chatStream';
 import { usePreferencesStore } from '@/stores/usePreferencesStore';
 import { getApiBaseUrl, APP_VERSION, APP_ENV } from '@/lib/api';
 import Header from '@/components/app/Header';
-import { User, Shield, Key, Settings2, Server, LogOut, Trash2 } from 'lucide-react';
+import { User, Shield, Key, Settings2, Server, LogOut, Trash2, Link2, Copy, Ban } from 'lucide-react';
+
+interface SharedLink {
+  id: string;
+  token: string;
+  createdAt: string;
+  revoked: boolean;
+  expiresAt: string | null;
+  questionExcerpt: string;
+}
 
 const SettingsPage = () => {
   const navigate = useNavigate();
@@ -44,6 +53,10 @@ const SettingsPage = () => {
     setEnableAnimations,
     setTypewriterEffect,
   } = usePreferencesStore();
+
+  // Shared links state
+  const [sharedLinks, setSharedLinks] = useState<SharedLink[]>([]);
+  const [sharedLoading, setSharedLoading] = useState(true);
 
   // Change password dialog state
   const [pwOpen, setPwOpen] = useState(false);
@@ -75,6 +88,60 @@ const SettingsPage = () => {
       navigate('/', { replace: true });
     }
   }, [hydrated, isAuthenticated, user, navigate]);
+
+  // Load the user's shared answer links
+  useEffect(() => {
+    if (!hydrated || !isAuthenticated || !accessToken) return;
+    const base = getApiBaseUrl();
+    if (!base) {
+      setSharedLoading(false);
+      return;
+    }
+    let cancelled = false;
+    fetch(`${base}/share/mine`, {
+      headers: { Authorization: `Bearer ${accessToken}` },
+    })
+      .then(async (res) => {
+        if (cancelled) return;
+        if (res.ok) setSharedLinks((await res.json()) as SharedLink[]);
+      })
+      .catch(() => {
+        // Non-critical card — leave list empty on network failure
+      })
+      .finally(() => {
+        if (!cancelled) setSharedLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [hydrated, isAuthenticated, accessToken]);
+
+  const handleRevokeShare = async (id: string) => {
+    const base = getApiBaseUrl();
+    if (!base || !accessToken) return;
+    try {
+      const res = await fetch(`${base}/share/${id}/revoke`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${accessToken}` },
+      });
+      if (!res.ok) throw new Error(`Revoke failed (${res.status})`);
+      setSharedLinks((links) =>
+        links.map((l) => (l.id === id ? { ...l, revoked: true } : l)),
+      );
+      toast.success('Share link revoked');
+    } catch {
+      toast.error('Could not revoke the link');
+    }
+  };
+
+  const handleCopyShare = async (token: string) => {
+    try {
+      await navigator.clipboard.writeText(`${window.location.origin}/s/${token}`);
+      toast.success('Link copied');
+    } catch {
+      toast.error('Could not copy the link');
+    }
+  };
 
   const handleLogout = () => {
     stopAllChatStreams();
@@ -286,6 +353,71 @@ const SettingsPage = () => {
                     aria-label="Toggle animations"
                   />
                 </div>
+              </CardContent>
+            </Card>
+
+            {/* Shared links */}
+            <Card>
+              <CardHeader className="pb-3">
+                <CardTitle className="flex items-center gap-2 text-base">
+                  <Link2 className="w-4 h-4 text-primary" />
+                  Shared links
+                </CardTitle>
+                <CardDescription>
+                  Public links to answers you shared. Revoking makes a link stop working immediately.
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                {sharedLoading ? (
+                  <div className="h-10 rounded-md bg-muted/40 animate-pulse" />
+                ) : sharedLinks.length === 0 ? (
+                  <p className="text-sm text-muted-foreground">
+                    No shared links yet. Use the share button under an answer in chat.
+                  </p>
+                ) : (
+                  <ul className="space-y-2 max-h-64 overflow-y-auto pr-1">
+                    {sharedLinks.map((link) => (
+                      <li
+                        key={link.id}
+                        className="flex items-center gap-2 rounded-lg border border-border/50 px-2.5 py-2"
+                      >
+                        <div className="flex-1 min-w-0">
+                          <p className="text-sm truncate">
+                            {link.questionExcerpt || 'Shared answer'}
+                          </p>
+                          <p className="text-[11px] text-muted-foreground">
+                            {new Date(link.createdAt).toLocaleDateString()}
+                            {link.revoked && ' · revoked'}
+                            {!link.revoked &&
+                              link.expiresAt &&
+                              new Date(link.expiresAt).getTime() <= Date.now() &&
+                              ' · expired'}
+                          </p>
+                        </div>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-7 w-7 text-muted-foreground hover:text-foreground shrink-0"
+                          onClick={() => void handleCopyShare(link.token)}
+                          disabled={link.revoked}
+                          aria-label="Copy public link"
+                        >
+                          <Copy className="w-3.5 h-3.5" />
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-7 w-7 text-destructive/70 hover:text-destructive shrink-0"
+                          onClick={() => void handleRevokeShare(link.id)}
+                          disabled={link.revoked}
+                          aria-label="Revoke link"
+                        >
+                          <Ban className="w-3.5 h-3.5" />
+                        </Button>
+                      </li>
+                    ))}
+                  </ul>
+                )}
               </CardContent>
             </Card>
 

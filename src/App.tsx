@@ -19,6 +19,7 @@ import ChatPage from "./pages/ChatPage";
 import GardenPage from "./pages/GardenPage";
 import SettingsPage from "./pages/SettingsPage";
 import NotFound from "./pages/NotFound";
+import SharePage from "./pages/SharePage";
 import AppLayout from "./components/app/AppLayout";
 import BackendHealthBanner from "./components/app/BackendHealthBanner";
 import ProtectedRoute from "./components/app/ProtectedRoute";
@@ -73,6 +74,9 @@ const App = () => (
           <Route path="/garden" element={<ProtectedRoute><AppLayout /></ProtectedRoute>}>
             <Route index element={<GardenPage />} />
           </Route>
+
+          {/* Public shared answer — standalone, no app shell, no auth */}
+          <Route path="/s/:token" element={<SharePage />} />
 
           {/* Catch-all */}
           <Route path="*" element={<NotFound />} />

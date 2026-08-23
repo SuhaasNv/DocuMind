@@ -2,7 +2,7 @@ import { memo, useState, useEffect, useRef, useCallback } from 'react';
 import { cn } from '@/lib/utils';
 import { Message, type ChatSource } from '@/stores/useAppStore';
 import { usePreferencesStore } from '@/stores/usePreferencesStore';
-import { Bot, User, Copy, Check, RefreshCw, RotateCcw, AlertCircle, Pin } from 'lucide-react';
+import { Bot, User, Copy, Check, RefreshCw, RotateCcw, AlertCircle, Pin, Share2 } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import { motion } from 'framer-motion';
 import { Button } from '@/components/ui/button';
@@ -29,9 +29,11 @@ interface MessageBubbleProps {
   onOpenSource?: (source: ChatSource) => void;
   /** Pins this answer to the Knowledge Garden. Shown for completed AI messages. */
   onPin?: () => Promise<void>;
+  /** Creates a public share link for this answer. Shown for completed AI messages. */
+  onShare?: () => Promise<void>;
 }
 
-const MessageBubble = memo(function MessageBubble({ message, onRegenerate, onOpenSource, onPin }: MessageBubbleProps) {
+const MessageBubble = memo(function MessageBubble({ message, onRegenerate, onOpenSource, onPin, onShare }: MessageBubbleProps) {
   const isUser = message.role === 'user';
   const showSourcesUnderAnswers = usePreferencesStore((s) => s.showSourcesUnderAnswers);
   const enableAnimations = usePreferencesStore((s) => s.enableAnimations);
@@ -41,6 +43,7 @@ const MessageBubble = memo(function MessageBubble({ message, onRegenerate, onOpe
   const [copied, setCopied] = useState(false);
   const [pinned, setPinned] = useState(false);
   const [pinning, setPinning] = useState(false);
+  const [sharing, setSharing] = useState(false);
   const typewriterIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const contentLengthRef = useRef(message.content.length);
   const prevMessageIdRef = useRef(message.id);
@@ -148,6 +151,18 @@ const MessageBubble = memo(function MessageBubble({ message, onRegenerate, onOpe
       setPinning(false);
     }
   }, [onPin, pinning, pinned]);
+
+  const handleShare = useCallback(async () => {
+    if (!onShare || sharing) return;
+    setSharing(true);
+    try {
+      await onShare();
+    } catch {
+      // Error toast is shown by the onShare handler
+    } finally {
+      setSharing(false);
+    }
+  }, [onShare, sharing]);
 
   const Wrapper = enableAnimations ? motion.div : 'div';
   const wrapperProps = enableAnimations
@@ -314,6 +329,27 @@ const MessageBubble = memo(function MessageBubble({ message, onRegenerate, onOpe
                 </TooltipTrigger>
                 <TooltipContent side="bottom">
                   {pinned ? 'Pinned to garden' : 'Pin to garden'}
+                </TooltipContent>
+              </Tooltip>
+            )}
+
+            {/* Share — public link to this answer */}
+            {onShare && !isError && (
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="h-7 w-7 text-muted-foreground hover:text-foreground"
+                    onClick={handleShare}
+                    disabled={sharing}
+                    aria-label="Share this answer"
+                  >
+                    <Share2 className="w-3.5 h-3.5" aria-hidden="true" />
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent side="bottom">
+                  {sharing ? 'Creating link…' : 'Share (copy public link)'}
                 </TooltipContent>
               </Tooltip>
             )}

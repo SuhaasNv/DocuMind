@@ -24,17 +24,18 @@ enum Role {
 }
 
 model User {
-  id           String       @id @default(cuid())
-  email        String       @unique
-  passwordHash String       @map("password_hash")
-  name         String
-  role         Role         @default(USER)
-  lastActiveAt DateTime?    @map("last_active_at")
-  createdAt    DateTime     @default(now()) @map("created_at")
-  updatedAt    DateTime     @updatedAt @map("updated_at")
-  documents    Document[]
-  collections  Collection[]
-  insights     Insight[]
+  id            String         @id @default(cuid())
+  email         String         @unique
+  passwordHash  String         @map("password_hash")
+  name          String
+  role          Role           @default(USER)
+  lastActiveAt  DateTime?      @map("last_active_at")
+  createdAt     DateTime       @default(now()) @map("created_at")
+  updatedAt     DateTime       @updatedAt @map("updated_at")
+  documents     Document[]
+  collections   Collection[]
+  insights      Insight[]
+  sharedAnswers SharedAnswer[]
 
   @@map("users")
 }
@@ -135,4 +136,21 @@ model Insight {
 
   @@index([userId])
   @@map("insights")
+}
+
+// Public shareable answer link. messageSnapshot is a whitelist-serialized copy
+// of the answer frozen at share time (see share/share.util.ts) — never joined
+// back to documents/chunks, so revoking or deleting the source doc never leaks.
+model SharedAnswer {
+  id              String    @id @default(cuid())
+  userId          String    @map("user_id")
+  token           String    @unique
+  messageSnapshot Json      @map("message_snapshot")
+  createdAt       DateTime  @default(now()) @map("created_at")
+  revoked         Boolean   @default(false)
+  expiresAt       DateTime? @map("expires_at")
+  user            User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@map("shared_answers")
 }

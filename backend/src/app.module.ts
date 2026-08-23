@@ -14,6 +14,7 @@ import { JwtAuthGuard } from './auth/jwt-auth.guard.js';
 import { HttpExceptionFilter } from './common/filters/http-exception.filter.js';
 import { AdminModule } from './admin/admin.module.js';
 import { InsightsModule } from './insights/insights.module.js';
+import { ShareModule } from './share/share.module.js';
 
 @Module({
   imports: [
@@ -39,6 +40,7 @@ import { InsightsModule } from './insights/insights.module.js';
     CollectionsModule,
     AdminModule,
     InsightsModule,
+    ShareModule,
   ],
   providers: [
     { provide: APP_GUARD, useClass: ThrottlerGuard },
