@@ -1,6 +1,10 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { createHash } from 'node:crypto';
-import { RetrievalService } from './retrieval.service.js';
+import {
+  RetrievalService,
+  type RetrievalDebugCollector,
+  type RrfCandidateMeta,
+} from './retrieval.service.js';
 import { PromptService, type HistoryTurn } from '../rag/prompt.service.js';
 import { LlmService } from '../rag/llm.service.js';
 import { ChatCacheService } from '../rag/chat-cache.service.js';
@@ -9,6 +13,10 @@ import { logRagLatency } from '../rag/rag-latency.logger.js';
 import type {
   ChatResponseDto,
   ChatSourceDto,
+  RagCacheStatus,
+  RagDebugCandidateDto,
+  RagDebugDto,
+  RagDebugTimingsDto,
 } from './dto/chat-response.dto.js';
 
 const NO_INFO_ANSWER = "I don't have enough information to answer that.";
@@ -27,13 +35,87 @@ export interface RagChatInput {
   topK?: number;
   /** Recent conversation turns, oldest first (token-capped downstream). */
   history?: HistoryTurn[];
+  /** When true, collect and return retrieval debug info (RagDebugDto). */
+  debug?: boolean;
 }
 
 /** Stream event: delta (token) or done (sources). Transport-agnostic; consumed by SSE or other transports. */
 export type RagStreamEvent =
   | { type: 'delta'; data: string }
   | { type: 'error'; data: { message: string } }
-  | { type: 'done'; data: { sources: ChatSourceDto[]; cached?: boolean } };
+  | {
+      type: 'done';
+      data: { sources: ChatSourceDto[]; cached?: boolean; debug?: RagDebugDto };
+    };
+
+export interface BuildRagDebugArgs {
+  /** The request's debug flag: falsy → no payload, zero work. */
+  debug: boolean | undefined;
+  documentId: string;
+  cacheStatus: RagCacheStatus;
+  semanticSimilarity?: number;
+  timings: RagDebugTimingsDto;
+  /** Fusion metadata from the retrieval debug collector (empty on cache hits). */
+  candidates?: RrfCandidateMeta[];
+  /** Chunk indices that survived prompt context trimming. */
+  includedChunkIndices?: number[];
+  topK: number;
+  historyTurns: number;
+}
+
+/**
+ * Assemble the RagDebugDto for a chat response. Pure and exported for tests.
+ * Returns undefined unless the request explicitly set debug: true, so
+ * non-debug responses never carry a debug key.
+ */
+export function buildRagDebug(
+  args: BuildRagDebugArgs,
+): RagDebugDto | undefined {
+  if (!args.debug) return undefined;
+  const round = (n: number): number => Math.round(n * 10) / 10;
+  const includedSet = new Set(args.includedChunkIndices ?? []);
+  const candidates: RagDebugCandidateDto[] = (args.candidates ?? []).map(
+    (c) => {
+      const included = c.retained && includedSet.has(c.chunkIndex);
+      return {
+        chunkIndex: c.chunkIndex,
+        documentId: args.documentId,
+        ...(c.denseScore !== undefined ? { denseScore: c.denseScore } : {}),
+        ...(c.lexicalScore !== undefined
+          ? { lexicalScore: c.lexicalScore }
+          : {}),
+        rrfScore: c.rrfScore,
+        retained: c.retained,
+        included,
+        ...(included ? { marker: `[Chunk ${c.chunkIndex}]` } : {}),
+      };
+    },
+  );
+  return {
+    cacheStatus: args.cacheStatus,
+    ...(args.semanticSimilarity !== undefined
+      ? { semanticSimilarity: args.semanticSimilarity }
+      : {}),
+    timings: {
+      embedMs: round(args.timings.embedMs),
+      retrievalMs: round(args.timings.retrievalMs),
+      promptBuildMs: round(args.timings.promptBuildMs),
+      ...(args.timings.llmFirstTokenMs !== undefined
+        ? { llmFirstTokenMs: round(args.timings.llmFirstTokenMs) }
+        : {}),
+      totalMs: round(args.timings.totalMs),
+    },
+    candidates,
+    topK: args.topK,
+    historyTurns: args.historyTurns,
+  };
+}
+
+/** Score of the top-ranked source, or null when there are none. */
+function topScoreOf(sources: ChatSourceDto[]): number | null {
+  if (sources.length === 0) return null;
+  return sources.reduce((max, s) => (s.score > max ? s.score : max), -Infinity);
+}
 
 /**
  * RAG v1: grounded answer generation without streaming.
@@ -73,7 +155,14 @@ export class RagOrchestratorService {
     settingsKey: string,
     question: string,
     t0: number,
-  ): Promise<{ hit: ChatResponseDto | null; queryEmbedding: number[] }> {
+  ): Promise<{
+    hit: ChatResponseDto | null;
+    queryEmbedding: number[];
+    cacheStatus: RagCacheStatus;
+    semanticSimilarity?: number;
+    /** Time spent computing the query embedding (0 when served from cache). */
+    embedMs: number;
+  }> {
     const exact = await this.chatCache.getExact(
       documentId,
       settingsKey,
@@ -83,11 +172,19 @@ export class RagOrchestratorService {
       this.logger.log(
         `[chat-cache] exact hit doc=${documentId} in ${Math.round(performance.now() - t0)}ms`,
       );
-      return { hit: { ...exact, cached: true }, queryEmbedding: [] };
+      return {
+        hit: { ...exact, cached: true },
+        queryEmbedding: [],
+        cacheStatus: 'exact',
+        embedMs: 0,
+      };
     }
     let queryEmbedding = await this.chatCache.getQueryEmbedding(question);
+    let embedMs = 0;
     if (!queryEmbedding) {
+      const t0Embed = performance.now();
       queryEmbedding = await this.embeddingService.embed(question);
+      embedMs = performance.now() - t0Embed;
       void this.chatCache.storeQueryEmbedding(question, queryEmbedding);
     }
     const semantic = await this.chatCache.getSemantic(
@@ -99,10 +196,16 @@ export class RagOrchestratorService {
       this.logger.log(
         `[chat-cache] semantic hit doc=${documentId} sim=${semantic.similarity.toFixed(4)} in ${Math.round(performance.now() - t0)}ms`,
       );
-      return { hit: { ...semantic.hit, cached: true }, queryEmbedding };
+      return {
+        hit: { ...semantic.hit, cached: true },
+        queryEmbedding,
+        cacheStatus: 'semantic',
+        semanticSimilarity: semantic.similarity,
+        embedMs,
+      };
     }
     this.logger.log(`[chat-cache] miss doc=${documentId}`);
-    return { hit: null, queryEmbedding };
+    return { hit: null, queryEmbedding, cacheStatus: 'miss', embedMs };
   }
 
   /**
@@ -112,6 +215,7 @@ export class RagOrchestratorService {
   async chat(input: RagChatInput): Promise<ChatResponseDto> {
     const { userId, documentId, question, topK = DEFAULT_TOP_K } = input;
     const history = input.history ?? [];
+    const t0Total = performance.now();
     const trimmedQuestion = question?.trim() ?? '';
     if (!trimmedQuestion) {
       return { answer: NO_INFO_ANSWER, sources: [] };
@@ -122,18 +226,52 @@ export class RagOrchestratorService {
       documentId,
       settingsKey,
       trimmedQuestion,
-      performance.now(),
+      t0Total,
     );
-    if (cache.hit) return cache.hit;
+    if (cache.hit) {
+      const totalMs = performance.now() - t0Total;
+      logRagLatency({
+        documentId,
+        cacheStatus: cache.cacheStatus,
+        chunkCount: cache.hit.sources.length,
+        topScore: topScoreOf(cache.hit.sources),
+        embedMs: cache.embedMs,
+        retrievalMs: 0,
+        promptBuildMs: 0,
+        ttftMs: null,
+        totalMs,
+      });
+      const debug = buildRagDebug({
+        debug: input.debug,
+        documentId,
+        cacheStatus: cache.cacheStatus,
+        semanticSimilarity: cache.semanticSimilarity,
+        timings: {
+          embedMs: cache.embedMs,
+          retrievalMs: 0,
+          promptBuildMs: 0,
+          totalMs,
+        },
+        topK,
+        historyTurns: history.length,
+      });
+      return debug ? { ...cache.hit, debug } : cache.hit;
+    }
 
+    const debugCollector: RetrievalDebugCollector | undefined = input.debug
+      ? {}
+      : undefined;
     const t0Retrieval = performance.now();
-    const chunks = await this.retrievalService.retrieve({
-      userId,
-      documentId,
-      query: trimmedQuestion,
-      topK,
-      queryEmbedding: cache.queryEmbedding,
-    });
+    const chunks = await this.retrievalService.retrieve(
+      {
+        userId,
+        documentId,
+        query: trimmedQuestion,
+        topK,
+        queryEmbedding: cache.queryEmbedding,
+      },
+      debugCollector,
+    );
     const retrievalMs = performance.now() - t0Retrieval;
 
     if (!chunks.length) {
@@ -159,8 +297,19 @@ export class RagOrchestratorService {
     const promptBuildMs = performance.now() - t0Prompt;
 
     const answer = await this.llmService.completeMessages(messages);
+    const totalMs = performance.now() - t0Total;
 
-    logRagLatency({ retrievalMs, promptBuildMs });
+    logRagLatency({
+      documentId,
+      cacheStatus: 'miss',
+      chunkCount: chunks.length,
+      topScore: chunks[0]?.score ?? null,
+      embedMs: cache.embedMs,
+      retrievalMs,
+      promptBuildMs,
+      ttftMs: null,
+      totalMs,
+    });
 
     const chunkByIndex = new Map(chunks.map((c) => [c.chunkIndex, c]));
     const sources: ChatSourceDto[] = includedChunkIndices
@@ -172,6 +321,7 @@ export class RagOrchestratorService {
         snippet: this.makeSnippet(c.content),
       }));
 
+    // Cached entries never store debug data — it is recomputed per request.
     void this.chatCache.store(
       documentId,
       settingsKey,
@@ -180,7 +330,17 @@ export class RagOrchestratorService {
       answer,
       sources,
     );
-    return { answer, sources };
+    const debug = buildRagDebug({
+      debug: input.debug,
+      documentId,
+      cacheStatus: 'miss',
+      timings: { embedMs: cache.embedMs, retrievalMs, promptBuildMs, totalMs },
+      candidates: debugCollector?.candidates,
+      includedChunkIndices,
+      topK,
+      historyTurns: history.length,
+    });
+    return debug ? { answer, sources, debug } : { answer, sources };
   }
 
   /** Extract a clean snippet from chunk content (first sentence or first 120 chars). */
@@ -209,6 +369,7 @@ export class RagOrchestratorService {
   ): AsyncGenerator<RagStreamEvent, void, undefined> {
     const { userId, documentId, question, topK = DEFAULT_TOP_K } = input;
     const history = input.history ?? [];
+    const t0Total = performance.now();
     const trimmedQuestion = question?.trim() ?? '';
 
     if (!trimmedQuestion) {
@@ -222,7 +383,7 @@ export class RagOrchestratorService {
       documentId,
       settingsKey,
       trimmedQuestion,
-      performance.now(),
+      t0Total,
     );
     if (cache.hit) {
       // Replay the cached answer over the same SSE protocol, in word-group
@@ -237,21 +398,57 @@ export class RagOrchestratorService {
         }
       }
       if (piece.length > 0) yield { type: 'delta', data: piece };
+      const totalMs = performance.now() - t0Total;
+      logRagLatency({
+        documentId,
+        cacheStatus: cache.cacheStatus,
+        chunkCount: cache.hit.sources.length,
+        topScore: topScoreOf(cache.hit.sources),
+        embedMs: cache.embedMs,
+        retrievalMs: 0,
+        promptBuildMs: 0,
+        ttftMs: null,
+        totalMs,
+      });
+      const debug = buildRagDebug({
+        debug: input.debug,
+        documentId,
+        cacheStatus: cache.cacheStatus,
+        semanticSimilarity: cache.semanticSimilarity,
+        timings: {
+          embedMs: cache.embedMs,
+          retrievalMs: 0,
+          promptBuildMs: 0,
+          totalMs,
+        },
+        topK,
+        historyTurns: history.length,
+      });
       yield {
         type: 'done',
-        data: { sources: cache.hit.sources, cached: true },
+        data: {
+          sources: cache.hit.sources,
+          cached: true,
+          ...(debug ? { debug } : {}),
+        },
       };
       return;
     }
 
+    const debugCollector: RetrievalDebugCollector | undefined = input.debug
+      ? {}
+      : undefined;
     const t0Retrieval = performance.now();
-    const chunks = await this.retrievalService.retrieve({
-      userId,
-      documentId,
-      query: trimmedQuestion,
-      topK,
-      queryEmbedding: cache.queryEmbedding,
-    });
+    const chunks = await this.retrievalService.retrieve(
+      {
+        userId,
+        documentId,
+        query: trimmedQuestion,
+        topK,
+        queryEmbedding: cache.queryEmbedding,
+      },
+      debugCollector,
+    );
     const retrievalMs = performance.now() - t0Retrieval;
 
     if (!chunks.length) {
@@ -281,6 +478,7 @@ export class RagOrchestratorService {
     const promptBuildMs = performance.now() - t0Prompt;
 
     let llmFirstTokenMs: number | undefined;
+    let ttftMs: number | undefined;
     let firstTokenRecorded = false;
     const t0Llm = performance.now();
 
@@ -295,6 +493,7 @@ export class RagOrchestratorService {
         if (signal?.aborted) break;
         if (!firstTokenRecorded) {
           llmFirstTokenMs = performance.now() - t0Llm;
+          ttftMs = performance.now() - t0Total;
           firstTokenRecorded = true;
         }
         tokenYielded = true;
@@ -333,8 +532,20 @@ export class RagOrchestratorService {
             snippet: this.makeSnippet(c.content),
           }));
       })();
-      logRagLatency({ retrievalMs, promptBuildMs, llmFirstTokenMs });
+      const totalMs = performance.now() - t0Total;
+      logRagLatency({
+        documentId,
+        cacheStatus: 'miss',
+        chunkCount: chunks.length,
+        topScore: chunks[0]?.score ?? null,
+        embedMs: cache.embedMs,
+        retrievalMs,
+        promptBuildMs,
+        ttftMs: ttftMs ?? null,
+        totalMs,
+      });
       if (!errored && !signal?.aborted && fullAnswer.length > 0) {
+        // Cached entries never store debug data — it is recomputed per request.
         void this.chatCache.store(
           documentId,
           settingsKey,
@@ -344,7 +555,26 @@ export class RagOrchestratorService {
           sources,
         );
       }
-      yield { type: 'done', data: { sources } };
+      const debug = buildRagDebug({
+        debug: input.debug,
+        documentId,
+        cacheStatus: 'miss',
+        timings: {
+          embedMs: cache.embedMs,
+          retrievalMs,
+          promptBuildMs,
+          ...(llmFirstTokenMs !== undefined ? { llmFirstTokenMs } : {}),
+          totalMs,
+        },
+        candidates: debugCollector?.candidates,
+        includedChunkIndices,
+        topK,
+        historyTurns: history.length,
+      });
+      yield {
+        type: 'done',
+        data: { sources, ...(debug ? { debug } : {}) },
+      };
     }
   }
 }

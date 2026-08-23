@@ -1,6 +1,7 @@
 import { streamChat, type ChatHistoryTurn } from './sseChat';
 import { getApiBaseUrl } from './api';
 import { useAppStore, type Message } from '@/stores/useAppStore';
+import { usePreferencesStore } from '@/stores/usePreferencesStore';
 
 /**
  * Module-level chat stream controller.
@@ -125,13 +126,14 @@ export async function sendChatMessage(documentId: string, content: string): Prom
           fullContent += chunk;
           scheduleFlush();
         },
-        onDone: (sources) => {
+        onDone: (sources, debug) => {
           clearIdleTimer();
           if (signal.aborted) return;
           cancelAndFlush();
           const s = useAppStore.getState();
           s.setStreaming(documentId, assistantId, false);
           if (sources.length > 0) s.setMessageSources(documentId, assistantId, sources);
+          if (debug) s.setMessageDebug(documentId, assistantId, debug);
         },
         onError: (message) => {
           clearIdleTimer();
@@ -151,6 +153,7 @@ export async function sendChatMessage(documentId: string, content: string): Prom
         getToken: () => useAppStore.getState().accessToken,
         baseUrl,
         history,
+        debug: usePreferencesStore.getState().showRetrievalDebug,
       },
     );
   } finally {

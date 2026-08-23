@@ -2,11 +2,24 @@ import { memo, useState, useEffect, useRef, useCallback } from 'react';
 import { cn } from '@/lib/utils';
 import { Message } from '@/stores/useAppStore';
 import { usePreferencesStore } from '@/stores/usePreferencesStore';
-import { Bot, User, Copy, Check, RefreshCw, RotateCcw, AlertCircle } from 'lucide-react';
+import {
+  Bot,
+  User,
+  Copy,
+  Check,
+  RefreshCw,
+  RotateCcw,
+  AlertCircle,
+  ChevronDown,
+  ChevronRight,
+} from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import { motion } from 'framer-motion';
 import { Button } from '@/components/ui/button';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
+
+/** Format a retrieval score for the debug table ('—' when the chunk was not in that list). */
+const fmtScore = (n?: number): string => (n == null ? '—' : n.toFixed(4));
 
 const TYPING_MS_PER_CHAR = 22;
 const TYPING_CHARS_PER_TICK = 2;
@@ -28,6 +41,7 @@ const MessageBubble = memo(function MessageBubble({ message, onRegenerate }: Mes
 
   const [visibleLength, setVisibleLength] = useState(0);
   const [copied, setCopied] = useState(false);
+  const [debugOpen, setDebugOpen] = useState(false);
   const typewriterIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const contentLengthRef = useRef(message.content.length);
   const prevMessageIdRef = useRef(message.id);
@@ -40,9 +54,21 @@ const MessageBubble = memo(function MessageBubble({ message, onRegenerate }: Mes
     message.content.startsWith('Request timed out');
 
   const showSources = !isUser && showSourcesUnderAnswers && message.sources && message.sources.length > 0;
+  const debug = !isUser && !message.isStreaming ? message.debug : undefined;
   // Sort by chunk index so citations follow document order
   const sortedSources = showSources
     ? [...message.sources!].sort((a, b) => a.chunkIndex - b.chunkIndex)
+    : [];
+
+  const timingChips = debug
+    ? [
+        { label: 'embed', value: debug.timings.embedMs },
+        { label: 'retrieve', value: debug.timings.retrievalMs },
+        ...(debug.timings.llmFirstTokenMs != null
+          ? [{ label: 'ttft', value: debug.timings.llmFirstTokenMs }]
+          : []),
+        { label: 'total', value: debug.timings.totalMs },
+      ]
     : [];
 
   // Reset visible length when switching to a different message
@@ -236,6 +262,97 @@ const MessageBubble = memo(function MessageBubble({ message, onRegenerate }: Mes
                   </div>
                 ))}
               </div>
+            </div>
+          )}
+
+          {debug && (
+            <div className="mt-3 pt-3 border-t border-border/50" role="complementary" aria-label="Retrieval details">
+              <button
+                type="button"
+                onClick={() => setDebugOpen((o) => !o)}
+                aria-expanded={debugOpen}
+                className="flex items-center gap-1 text-[11px] font-medium text-muted-foreground uppercase tracking-wide hover:text-foreground transition-colors"
+              >
+                {debugOpen ? (
+                  <ChevronDown className="w-3 h-3" aria-hidden="true" />
+                ) : (
+                  <ChevronRight className="w-3 h-3" aria-hidden="true" />
+                )}
+                Retrieval details
+              </button>
+
+              {debugOpen && (
+                <div className="mt-2 flex flex-col gap-2">
+                  {/* Cache status + timing chips */}
+                  <div className="flex flex-wrap items-center gap-1.5">
+                    <span
+                      className={cn(
+                        'rounded px-1.5 py-0.5 text-[10px] font-mono font-semibold leading-none',
+                        debug.cacheStatus === 'miss'
+                          ? 'bg-muted/50 text-muted-foreground'
+                          : 'bg-primary/10 text-primary',
+                      )}
+                    >
+                      cache: {debug.cacheStatus}
+                      {debug.semanticSimilarity != null &&
+                        ` (${(debug.semanticSimilarity * 100).toFixed(1)}%)`}
+                    </span>
+                    {timingChips.map((chip) => (
+                      <span
+                        key={chip.label}
+                        className="rounded bg-muted/50 px-1.5 py-0.5 text-[10px] font-mono tabular-nums text-muted-foreground leading-none"
+                      >
+                        {chip.label}: {Math.round(chip.value)}ms
+                      </span>
+                    ))}
+                    <span className="rounded bg-muted/50 px-1.5 py-0.5 text-[10px] font-mono tabular-nums text-muted-foreground leading-none">
+                      topK: {debug.topK}
+                    </span>
+                  </div>
+
+                  {/* Candidate table — scrolls inside its own container on mobile */}
+                  {debug.candidates.length > 0 && (
+                    <div className="overflow-x-auto rounded-lg border border-border/50">
+                      <table className="w-full min-w-[420px] text-[11px] font-mono tabular-nums">
+                        <thead>
+                          <tr className="border-b border-border/50 text-left text-muted-foreground">
+                            <th className="px-2 py-1.5 font-medium">chunk</th>
+                            <th className="px-2 py-1.5 font-medium text-right">dense</th>
+                            <th className="px-2 py-1.5 font-medium text-right">lexical</th>
+                            <th className="px-2 py-1.5 font-medium text-right">rrf</th>
+                            <th className="px-2 py-1.5 font-medium text-center">kept</th>
+                            <th className="px-2 py-1.5 font-medium text-center">in&nbsp;prompt</th>
+                            <th className="px-2 py-1.5 font-medium">marker</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {debug.candidates.map((c) => (
+                            <tr
+                              key={c.chunkIndex}
+                              className={cn(
+                                'border-b border-border/30 last:border-b-0',
+                                !c.retained && 'text-muted-foreground/50',
+                              )}
+                            >
+                              <td className="px-2 py-1">§{c.chunkIndex + 1}</td>
+                              <td className="px-2 py-1 text-right">{fmtScore(c.denseScore)}</td>
+                              <td className="px-2 py-1 text-right">{fmtScore(c.lexicalScore)}</td>
+                              <td className="px-2 py-1 text-right">{c.rrfScore.toFixed(4)}</td>
+                              <td className={cn('px-2 py-1 text-center', c.retained && 'text-green-400')}>
+                                {c.retained ? '✓' : '—'}
+                              </td>
+                              <td className={cn('px-2 py-1 text-center', c.included && 'text-green-400')}>
+                                {c.included ? '✓' : '—'}
+                              </td>
+                              <td className="px-2 py-1 text-muted-foreground">{c.marker ?? '—'}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
           )}
         </div>

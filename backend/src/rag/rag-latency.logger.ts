@@ -1,30 +1,44 @@
 import { Logger } from '@nestjs/common';
+import type { RagCacheStatus } from '../documents/dto/chat-response.dto.js';
 
-const RAG_LATENCY = 'RagLatency';
-const isDev = process.env.NODE_ENV !== 'production';
+const logger = new Logger('RagLatency');
 
-export interface RagLatencyTimings {
+export interface RagLatencyPayload {
+  documentId: string;
+  cacheStatus: RagCacheStatus;
+  /** Retrieved chunks (cache hits: cached source count). */
+  chunkCount: number;
+  /** Score of the top-ranked chunk (null when nothing was retrieved). */
+  topScore: number | null;
+  embedMs: number;
   retrievalMs: number;
   promptBuildMs: number;
-  llmFirstTokenMs?: number;
+  /** Time to first LLM token from request start (null for non-stream / cache hits). */
+  ttftMs: number | null;
+  totalMs: number;
 }
 
 /**
- * Log RAG pipeline timings in dev only. No-op in production.
- * Use to verify TTFT and pipeline improvements.
+ * Always-on metrics: one structured JSON log line per chat (this is the
+ * metrics story — grep "RagLatency" in production logs).
  */
-export function logRagLatency(timings: RagLatencyTimings): void {
-  if (!isDev) return;
-  const logger = new Logger(RAG_LATENCY);
-  const ttft =
-    timings.llmFirstTokenMs != null
-      ? timings.retrievalMs + timings.promptBuildMs + timings.llmFirstTokenMs
-      : null;
+export function logRagLatency(payload: RagLatencyPayload): void {
+  const ms = (n: number | null): number | null =>
+    n == null ? null : Math.round(n * 10) / 10;
   logger.log(
-    `retrieval=${timings.retrievalMs}ms promptBuild=${timings.promptBuildMs}ms` +
-      (timings.llmFirstTokenMs != null
-        ? ` llmFirstToken=${timings.llmFirstTokenMs}ms`
-        : '') +
-      (ttft != null ? ` ttft=${ttft}ms` : ''),
+    JSON.stringify({
+      documentId: payload.documentId,
+      cacheStatus: payload.cacheStatus,
+      chunkCount: payload.chunkCount,
+      topScore:
+        payload.topScore == null
+          ? null
+          : Math.round(payload.topScore * 10000) / 10000,
+      embedMs: ms(payload.embedMs),
+      retrievalMs: ms(payload.retrievalMs),
+      promptBuildMs: ms(payload.promptBuildMs),
+      ttftMs: ms(payload.ttftMs),
+      totalMs: ms(payload.totalMs),
+    }),
   );
 }

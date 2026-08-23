@@ -12,9 +12,41 @@ export interface ChatSource {
   snippet?: string;
 }
 
+export interface RetrievalDebugCandidate {
+  chunkIndex: number;
+  documentId?: string;
+  denseScore?: number;
+  lexicalScore?: number;
+  rrfScore: number;
+  /** Survived RRF top-K selection. */
+  retained: boolean;
+  /** Survived prompt context trimming (sent to the LLM). */
+  included: boolean;
+  /** Context marker as it appears in the prompt, e.g. "[Chunk 3]". */
+  marker?: string;
+}
+
+export interface RetrievalDebugTimings {
+  embedMs: number;
+  retrievalMs: number;
+  promptBuildMs: number;
+  llmFirstTokenMs?: number;
+  totalMs: number;
+}
+
+/** Backend RagDebugDto: retrieval transparency payload on the done event. */
+export interface RetrievalDebug {
+  cacheStatus: 'miss' | 'exact' | 'semantic';
+  semanticSimilarity?: number;
+  timings: RetrievalDebugTimings;
+  candidates: RetrievalDebugCandidate[];
+  topK: number;
+  historyTurns: number;
+}
+
 export interface StreamChatCallbacks {
   onDelta: (chunk: string) => void;
-  onDone: (sources: ChatSource[]) => void;
+  onDone: (sources: ChatSource[], debug?: RetrievalDebug) => void;
   onError: (message: string) => void;
 }
 
@@ -26,6 +58,8 @@ export interface ChatHistoryTurn {
 export interface StreamChatOptions {
   /** Recent conversation turns, oldest first (server token-caps them). */
   history?: ChatHistoryTurn[];
+  /** When true, ask the backend for retrieval debug info on the done event. */
+  debug?: boolean;
   signal?: AbortSignal;
   getToken: () => string | null;
   baseUrl: string;
@@ -58,7 +92,12 @@ export async function streamChat(
         'Content-Type': 'application/json',
         Authorization: `Bearer ${token}`,
       },
-      body: JSON.stringify({ question, history: options.history }),
+      body: JSON.stringify({
+        question,
+        history: options.history,
+        // Undefined when off, so the key is omitted from the payload entirely.
+        debug: options.debug ? true : undefined,
+      }),
       signal,
     });
   } catch (err) {
@@ -127,8 +166,14 @@ export async function streamChat(
 
         if (eventType === 'done') {
           try {
-            const payload = JSON.parse(dataLine) as { sources?: ChatSource[] };
-            callbacks.onDone(Array.isArray(payload.sources) ? payload.sources : []);
+            const payload = JSON.parse(dataLine) as {
+              sources?: ChatSource[];
+              debug?: RetrievalDebug;
+            };
+            callbacks.onDone(
+              Array.isArray(payload.sources) ? payload.sources : [],
+              payload.debug
+            );
           } catch {
             callbacks.onDone([]);
           }
@@ -157,8 +202,14 @@ export async function streamChat(
       }
       if (eventType === 'done' && dataLine) {
         try {
-          const payload = JSON.parse(dataLine) as { sources?: ChatSource[] };
-          callbacks.onDone(Array.isArray(payload.sources) ? payload.sources : []);
+          const payload = JSON.parse(dataLine) as {
+            sources?: ChatSource[];
+            debug?: RetrievalDebug;
+          };
+          callbacks.onDone(
+            Array.isArray(payload.sources) ? payload.sources : [],
+            payload.debug
+          );
         } catch {
           callbacks.onDone([]);
         }

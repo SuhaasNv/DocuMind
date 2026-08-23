@@ -39,10 +39,12 @@ const SettingsPage = () => {
     showSourcesUnderAnswers,
     enableAnimations,
     typewriterEffect,
+    showRetrievalDebug,
     setAutoScrollWhileStreaming,
     setShowSourcesUnderAnswers,
     setEnableAnimations,
     setTypewriterEffect,
+    setShowRetrievalDebug,
   } = usePreferencesStore();
 
   // Change password dialog state
@@ -268,6 +270,22 @@ const SettingsPage = () => {
                     checked={typewriterEffect}
                     onCheckedChange={setTypewriterEffect}
                     aria-label="Toggle typewriter effect"
+                  />
+                </div>
+                <div className="flex items-center justify-between gap-4">
+                  <div>
+                    <Label htmlFor="retrieval-debug" className="font-medium text-sm">
+                      Show retrieval details
+                    </Label>
+                    <p className="text-muted-foreground text-xs mt-0.5">
+                      Expose scores, timings, and cache status behind each answer.
+                    </p>
+                  </div>
+                  <Switch
+                    id="retrieval-debug"
+                    checked={showRetrievalDebug}
+                    onCheckedChange={setShowRetrievalDebug}
+                    aria-label="Toggle show retrieval details"
                   />
                 </div>
                 <div className="flex items-center justify-between gap-4">
