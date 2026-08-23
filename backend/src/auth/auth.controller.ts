@@ -3,6 +3,7 @@ import { Throttle } from '@nestjs/throttler';
 import { AuthService, AuthResponse } from './auth.service.js';
 import { RegisterDto } from './dto/register.dto.js';
 import { LoginDto } from './dto/login.dto.js';
+import { ChangePasswordDto } from './dto/change-password.dto.js';
 import { Public } from '../common/decorators/public.decorator.js';
 import {
   CurrentUser,
@@ -33,6 +34,16 @@ export class AuthController {
   @Post('ping')
   async ping(@CurrentUser() user: JwtPayload): Promise<{ success: boolean }> {
     await this.authService.ping(user.sub);
+    return { success: true };
+  }
+
+  @Throttle(AUTH_THROTTLE)
+  @Post('change-password')
+  async changePassword(
+    @CurrentUser() user: JwtPayload,
+    @Body() dto: ChangePasswordDto,
+  ): Promise<{ success: boolean }> {
+    await this.authService.changePassword(user.sub, dto);
     return { success: true };
   }
 }
