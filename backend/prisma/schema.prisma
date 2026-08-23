@@ -60,6 +60,12 @@ model DocumentChunk {
   documentId String   @map("document_id")
   content    String   @db.Text
   embedding  Unsupported("vector(1536)")? // dimension from migration; insert via raw SQL
+  // Generated column (to_tsvector over content) + GIN index live in raw
+  // migrations only. NOTE: `prisma migrate dev` cannot express the HNSW/GIN
+  // indexes or the GENERATED clause — review any auto-generated migration
+  // before applying so it does not drop them (schema_sync once dropped the
+  // HNSW index this way).
+  contentTsv Unsupported("tsvector")? @map("content_tsv")
   chunkIndex Int      @map("chunk_index")
   createdAt  DateTime @default(now()) @map("created_at")
   document   Document @relation(fields: [documentId], references: [id], onDelete: Cascade)

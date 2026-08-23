@@ -81,6 +81,7 @@ export class LlmService {
    * Stub: returns a deterministic placeholder. Useful for tests and when no API key is set.
    */
   private completeStub(_prompt: string): Promise<string> {
+    void _prompt;
     return Promise.resolve(
       'This is a stub response. Set LLM_PROVIDER=ollama or LLM_PROVIDER=openai and configure the corresponding environment variables.',
     );
@@ -159,6 +160,8 @@ export class LlmService {
   private async *streamStub(
     _prompt: string,
   ): AsyncGenerator<string, void, undefined> {
+    void _prompt;
+    await Promise.resolve();
     const message =
       'This is a stub stream. Set LLM_PROVIDER=ollama and configure OLLAMA_BASE_URL and OLLAMA_MODEL for real streaming.';
     for (const word of message.split(/\s+/)) {

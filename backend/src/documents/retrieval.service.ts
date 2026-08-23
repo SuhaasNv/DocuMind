@@ -6,16 +6,12 @@ import type { RetrievalResultDto } from './dto/retrieval-response.dto.js';
 
 const DEFAULT_TOP_K = 4;
 const MAX_TOP_K = 20;
-/** Stop including chunks when score drops by more than this from the previous chunk. */
-const SCORE_DROP_THRESHOLD = 0.15;
-/** Max lexical results to merge with dense. */
+/** Dense over-fetch factor: RRF needs a candidate pool wider than topK. */
+const DENSE_OVERFETCH = 5;
+/** Max lexical (full-text) candidates. */
 const LEXICAL_CAP = 20;
-/** Base score for chunks that appear only in lexical results. */
-const LEXICAL_BASE_SCORE = 0.35;
-/** Score boost when a chunk appears in both dense and lexical results. */
-const HYBRID_BOOST = 0.2;
-/** Min keyword length for lexical tokenization. */
-const MIN_KEYWORD_LEN = 3;
+/** Reciprocal Rank Fusion constant (standard k=60). */
+const RRF_K = 60;
 
 export interface RetrievalInput {
   userId: string;
@@ -26,11 +22,60 @@ export interface RetrievalInput {
   queryEmbedding?: number[];
 }
 
+interface CandidateRow {
+  id: string;
+  content: string;
+  chunk_index: number;
+  score: number;
+}
+
+/**
+ * Reciprocal Rank Fusion over ranked candidate lists (k=60).
+ * score(d) = Σ 1/(k + rank_i(d)) over every list containing d (1-based rank).
+ * Rank-based, so incomparable score scales (cosine vs ts_rank) fuse cleanly.
+ * The reported per-chunk score is the dense cosine similarity when the chunk
+ * appeared in the dense list (a real, interpretable number), else ts_rank.
+ */
+export function rrfFuse(
+  lists: CandidateRow[][],
+  topK: number,
+  k: number = RRF_K,
+): RetrievalResultDto[] {
+  const fused = new Map<
+    string,
+    { row: CandidateRow; rrf: number; reportedScore: number | null }
+  >();
+  lists.forEach((list, listIdx) => {
+    list.forEach((row, i) => {
+      const entry = fused.get(row.id) ?? {
+        row,
+        rrf: 0,
+        reportedScore: null,
+      };
+      entry.rrf += 1 / (k + i + 1);
+      // Dense list is always first: prefer its cosine similarity for display.
+      if (listIdx === 0 || entry.reportedScore === null) {
+        entry.reportedScore = Number(row.score);
+      }
+      fused.set(row.id, entry);
+    });
+  });
+  return Array.from(fused.values())
+    .sort((a, b) => b.rrf - a.rrf)
+    .slice(0, topK)
+    .map(({ row, reportedScore }) => ({
+      chunkId: row.id,
+      content: row.content,
+      chunkIndex: Number(row.chunk_index),
+      score: reportedScore ?? 0,
+    }));
+}
+
 /**
  * Read-only retrieval layer: similarity search over document chunks.
  * Enforces ownership and document status. No chat or LLM.
- * Runs document lookup and query embedding in parallel for lower latency.
- * Stops early when similarity drops sharply (fewer, higher-quality chunks).
+ * Dense: pgvector cosine (HNSW). Lexical: Postgres full-text (tsvector + GIN,
+ * ts_rank_cd). Fused with Reciprocal Rank Fusion.
  */
 @Injectable()
 export class RetrievalService {
@@ -45,9 +90,7 @@ export class RetrievalService {
    * Retrieve top-k chunks by hybrid (dense + lexical) retrieval.
    * - If document does not exist or user does not own it → return [].
    * - If document status !== DONE → throw 400.
-   * - Dense: pgvector cosine similarity (unchanged).
-   * - Lexical: keyword ILIKE over content; merged and re-ranked with dense.
-   * - If lexical returns nothing, dense-only behavior is unchanged.
+   * - If dense returns nothing, falls back to chunk order (unchanged).
    */
   async retrieve(input: RetrievalInput): Promise<RetrievalResultDto[]> {
     const { userId, documentId, query, topK = DEFAULT_TOP_K } = input;
@@ -79,45 +122,27 @@ export class RetrievalService {
       );
     }
 
-    const keywords = this.tokenizeQuery(trimmedQuery);
+    const denseLimit = Math.min(k * DENSE_OVERFETCH, 50);
     const [denseRows, lexicalRows] = await Promise.all([
-      this.runDenseRetrieval(documentId, queryEmbedding, k),
-      keywords.length > 0
-        ? this.runLexicalRetrieval(documentId, keywords)
-        : Promise.resolve([]),
+      this.runDenseRetrieval(documentId, queryEmbedding, denseLimit),
+      this.runLexicalRetrieval(documentId, trimmedQuery),
     ]);
 
-    const merged = this.mergeAndRank(denseRows, lexicalRows, k, documentId);
-
-    return this.trimByScoreDrop(merged);
+    return rrfFuse([denseRows, lexicalRows], k);
   }
 
   /**
-   * Tokenize query: lowercase, split on non-word, length >= MIN_KEYWORD_LEN, deduplicate.
-   */
-  private tokenizeQuery(query: string): string[] {
-    const words = query
-      .toLowerCase()
-      .split(/\W+/)
-      .filter((w) => w.length >= MIN_KEYWORD_LEN);
-    return [...new Set(words)];
-  }
-
-  /**
-   * Dense retrieval: pgvector cosine similarity (unchanged from original).
+   * Dense retrieval: pgvector cosine similarity over the HNSW index.
+   * Falls back to chunk order when similarity returns no rows.
    */
   private async runDenseRetrieval(
     documentId: string,
     queryEmbedding: number[],
-    k: number,
-  ): Promise<
-    Array<{ id: string; content: string; chunk_index: number; score: number }>
-  > {
+    limit: number,
+  ): Promise<CandidateRow[]> {
     const embeddingStr = `[${queryEmbedding.join(',')}]`;
 
-    let rows = await this.prisma.$queryRawUnsafe<
-      Array<{ id: string; content: string; chunk_index: number; score: number }>
-    >(
+    let rows = await this.prisma.$queryRawUnsafe<CandidateRow[]>(
       `SELECT id, content, chunk_index,
               (1 - (embedding <=> $1::vector)) AS score
        FROM document_chunks
@@ -126,28 +151,21 @@ export class RetrievalService {
        LIMIT $3`,
       embeddingStr,
       documentId,
-      k,
+      limit,
     );
 
     if (rows.length === 0) {
       this.logger.warn(
         `Retrieval: 0 chunks from similarity for document ${documentId}; trying fallback by order`,
       );
-      rows = await this.prisma.$queryRawUnsafe<
-        Array<{
-          id: string;
-          content: string;
-          chunk_index: number;
-          score: number;
-        }>
-      >(
+      rows = await this.prisma.$queryRawUnsafe<CandidateRow[]>(
         `SELECT id, content, chunk_index, 0.5 AS score
          FROM document_chunks
          WHERE document_id = $1
          ORDER BY chunk_index ASC
          LIMIT $2`,
         documentId,
-        k,
+        limit,
       );
       if (rows.length === 0) {
         this.logger.warn(
@@ -160,111 +178,25 @@ export class RetrievalService {
   }
 
   /**
-   * Escape ILIKE special chars (%, _) so keywords are matched literally.
-   */
-  private escapeIlikePattern(kw: string): string {
-    return kw.replace(/\\/g, '\\\\').replace(/%/g, '\\%').replace(/_/g, '\\_');
-  }
-
-  /**
-   * Lexical retrieval: ILIKE over content for keywords; cap at LEXICAL_CAP distinct chunks.
+   * Lexical retrieval: Postgres full-text search over the generated tsvector
+   * column (GIN-indexed), ranked with ts_rank_cd. plainto_tsquery handles
+   * tokenization, stemming, and stop words; user input is never interpolated.
    */
   private async runLexicalRetrieval(
     documentId: string,
-    keywords: string[],
-  ): Promise<Array<{ id: string; content: string; chunk_index: number }>> {
-    if (keywords.length === 0) return [];
-
-    const patterns = keywords.map((kw) => `%${this.escapeIlikePattern(kw)}%`);
-    const placeholders = patterns
-      .map((_, i) => `content ILIKE $${i + 2}`)
-      .join(' OR ');
-    const query = `SELECT DISTINCT ON (id) id, content, chunk_index
-       FROM document_chunks
-       WHERE document_id = $1 AND (${placeholders})
-       ORDER BY id
-       LIMIT ${LEXICAL_CAP}`;
-
-    const params = [documentId, ...patterns];
-    const rows = await this.prisma.$queryRawUnsafe<
-      Array<{ id: string; content: string; chunk_index: number }>
-    >(query, ...params);
-
+    query: string,
+  ): Promise<CandidateRow[]> {
+    const rows = await this.prisma.$queryRawUnsafe<CandidateRow[]>(
+      `SELECT id, content, chunk_index,
+              ts_rank_cd(content_tsv, q) AS score
+       FROM document_chunks, plainto_tsquery('english', $2) q
+       WHERE document_id = $1 AND content_tsv @@ q
+       ORDER BY score DESC
+       LIMIT $3`,
+      documentId,
+      query,
+      LEXICAL_CAP,
+    );
     return rows;
-  }
-
-  /**
-   * Merge dense and lexical by chunkId; dense keep score, lexical-only get LEXICAL_BASE_SCORE,
-   * both get HYBRID_BOOST; normalize to [0,1], sort desc, take topK.
-   */
-  private mergeAndRank(
-    denseRows: Array<{
-      id: string;
-      content: string;
-      chunk_index: number;
-      score: number;
-    }>,
-    lexicalRows: Array<{ id: string; content: string; chunk_index: number }>,
-    topK: number,
-    _documentId: string,
-  ): RetrievalResultDto[] {
-    const byId = new Map<
-      string,
-      { chunkId: string; content: string; chunkIndex: number; score: number }
-    >();
-
-    for (const row of denseRows) {
-      byId.set(row.id, {
-        chunkId: row.id,
-        content: row.content,
-        chunkIndex: Number(row.chunk_index),
-        score: Number(row.score),
-      });
-    }
-
-    const lexicalIds = new Set(lexicalRows.map((r) => r.id));
-    for (const row of lexicalRows) {
-      const existing = byId.get(row.id);
-      if (existing) {
-        existing.score += HYBRID_BOOST;
-      } else {
-        byId.set(row.id, {
-          chunkId: row.id,
-          content: row.content,
-          chunkIndex: Number(row.chunk_index),
-          score: LEXICAL_BASE_SCORE,
-        });
-      }
-    }
-
-    let chunks = Array.from(byId.values());
-    const maxScore = Math.max(...chunks.map((c) => c.score), 0);
-    const minScore = Math.min(...chunks.map((c) => c.score), 0);
-    if (maxScore > minScore) {
-      chunks = chunks.map((c) => ({
-        ...c,
-        score: (c.score - minScore) / (maxScore - minScore),
-      }));
-    } else if (chunks.length > 0) {
-      chunks = chunks.map((c) => ({ ...c, score: 1 }));
-    }
-
-    chunks.sort((a, b) => b.score - a.score);
-    return chunks.slice(0, topK);
-  }
-
-  /**
-   * Keep chunks until similarity drops sharply from the previous (prefer fewer, higher-score chunks).
-   */
-  private trimByScoreDrop(chunks: RetrievalResultDto[]): RetrievalResultDto[] {
-    if (chunks.length <= 1) return chunks;
-    const out: RetrievalResultDto[] = [chunks[0]];
-    for (let i = 1; i < chunks.length; i++) {
-      const prev = chunks[i - 1].score;
-      const curr = chunks[i].score;
-      if (prev - curr > SCORE_DROP_THRESHOLD) break;
-      out.push(chunks[i]);
-    }
-    return out;
   }
 }

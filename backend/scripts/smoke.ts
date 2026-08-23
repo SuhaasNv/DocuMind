@@ -301,6 +301,15 @@ async function main(): Promise<void> {
     'chat returns answer + sources',
     typeof chatBody.answer === 'string' && Array.isArray(chatBody.sources),
   );
+  // Retrieval quality: the grounded answer should surface the document fact.
+  // Skipped under LLM_PROVIDER=stub (placeholder answer has no grounding).
+  if (!chatBody.answer.startsWith('This is a stub')) {
+    check(
+      'answer contains the document fact (AURORA-7)',
+      /AURORA-7/i.test(chatBody.answer),
+      chatBody.answer.slice(0, 80),
+    );
+  }
 
   // 8. Hostile input handled safely
   const hostile = await fetch(`${BASE}/documents/${doc.id}/chat`, {
