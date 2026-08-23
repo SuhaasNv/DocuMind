@@ -1,6 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
+import { createHash } from 'node:crypto';
 import { RetrievalService } from './retrieval.service.js';
-import { PromptService } from '../rag/prompt.service.js';
+import { PromptService, type HistoryTurn } from '../rag/prompt.service.js';
 import { LlmService } from '../rag/llm.service.js';
 import { ChatCacheService } from '../rag/chat-cache.service.js';
 import { EmbeddingService } from '../embedding/embedding.service.js';
@@ -24,6 +25,8 @@ export interface RagChatInput {
   documentId: string;
   question: string;
   topK?: number;
+  /** Recent conversation turns, oldest first (token-capped downstream). */
+  history?: HistoryTurn[];
 }
 
 /** Stream event: delta (token) or done (sources). Transport-agnostic; consumed by SSE or other transports. */
@@ -54,6 +57,16 @@ export class RagOrchestratorService {
    * cannot leak across users. Returns the hit (if any) and the query
    * embedding (cached or freshly computed) for retrieval reuse.
    */
+  /** Cache scope: topK plus a digest of the conversation history. */
+  private settingsKeyFor(topK: number, history: HistoryTurn[]): string {
+    if (history.length === 0) return `k${topK}`;
+    const digest = createHash('sha256')
+      .update(JSON.stringify(history.map((h) => [h.role, h.content.trim()])))
+      .digest('hex')
+      .slice(0, 16);
+    return `k${topK}:h${digest}`;
+  }
+
   private async checkCache(
     documentId: string,
     settingsKey: string,
@@ -97,12 +110,13 @@ export class RagOrchestratorService {
    */
   async chat(input: RagChatInput): Promise<ChatResponseDto> {
     const { userId, documentId, question, topK = DEFAULT_TOP_K } = input;
+    const history = input.history ?? [];
     const trimmedQuestion = question?.trim() ?? '';
     if (!trimmedQuestion) {
       return { answer: NO_INFO_ANSWER, sources: [] };
     }
 
-    const settingsKey = `k${topK}`;
+    const settingsKey = this.settingsKeyFor(topK, history);
     const cache = await this.checkCache(
       documentId,
       settingsKey,
@@ -131,17 +145,19 @@ export class RagOrchestratorService {
     }
 
     const t0Prompt = performance.now();
-    const { prompt, includedChunkIndices } = this.promptService.buildRagPrompt(
-      chunks.map((c) => ({
-        content: c.content,
-        chunkIndex: c.chunkIndex,
-        score: c.score,
-      })),
-      trimmedQuestion,
-    );
+    const { messages, includedChunkIndices } =
+      this.promptService.buildRagMessages(
+        chunks.map((c) => ({
+          content: c.content,
+          chunkIndex: c.chunkIndex,
+          score: c.score,
+        })),
+        trimmedQuestion,
+        history,
+      );
     const promptBuildMs = performance.now() - t0Prompt;
 
-    const answer = await this.llmService.complete(prompt);
+    const answer = await this.llmService.completeMessages(messages);
 
     logRagLatency({ retrievalMs, promptBuildMs });
 
@@ -191,6 +207,7 @@ export class RagOrchestratorService {
     signal?: AbortSignal,
   ): AsyncGenerator<RagStreamEvent, void, undefined> {
     const { userId, documentId, question, topK = DEFAULT_TOP_K } = input;
+    const history = input.history ?? [];
     const trimmedQuestion = question?.trim() ?? '';
 
     if (!trimmedQuestion) {
@@ -199,7 +216,7 @@ export class RagOrchestratorService {
       return;
     }
 
-    const settingsKey = `k${topK}`;
+    const settingsKey = this.settingsKeyFor(topK, history);
     const cache = await this.checkCache(
       documentId,
       settingsKey,
@@ -250,14 +267,16 @@ export class RagOrchestratorService {
     }
 
     const t0Prompt = performance.now();
-    const { prompt, includedChunkIndices } = this.promptService.buildRagPrompt(
-      chunks.map((c) => ({
-        content: c.content,
-        chunkIndex: c.chunkIndex,
-        score: c.score,
-      })),
-      trimmedQuestion,
-    );
+    const { messages, includedChunkIndices } =
+      this.promptService.buildRagMessages(
+        chunks.map((c) => ({
+          content: c.content,
+          chunkIndex: c.chunkIndex,
+          score: c.score,
+        })),
+        trimmedQuestion,
+        history,
+      );
     const promptBuildMs = performance.now() - t0Prompt;
 
     let llmFirstTokenMs: number | undefined;
@@ -268,7 +287,10 @@ export class RagOrchestratorService {
     let fullAnswer = '';
     let errored = false;
     try {
-      for await (const token of this.llmService.stream(prompt, signal)) {
+      for await (const token of this.llmService.streamMessages(
+        messages,
+        signal,
+      )) {
         if (signal?.aborted) break;
         if (!firstTokenRecorded) {
           llmFirstTokenMs = performance.now() - t0Llm;

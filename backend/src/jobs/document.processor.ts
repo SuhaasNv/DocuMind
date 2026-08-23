@@ -9,6 +9,7 @@ import { EmbeddingService } from '../embedding/embedding.service.js';
 import { DocumentChunkService } from '../chunks/document-chunk.service.js';
 import { chunkText } from '../lib/chunking.js';
 import { ChatCacheService } from '../rag/chat-cache.service.js';
+import { LlmService } from '../rag/llm.service.js';
 
 const QUEUE_NAME = 'document-processing';
 
@@ -19,6 +20,11 @@ const PROGRESS_EMBEDDING_END = 90;
 
 /** Chunks per embedding request / bulk insert (~384 SQL params per insert). */
 const EMBED_BATCH_SIZE = 64;
+
+/** Concurrent situating-context LLM calls (contextual retrieval). */
+const CONTEXT_CONCURRENCY = 8;
+/** Document intro passed to the situating prompt. */
+const CONTEXT_DOC_INTRO_CHARS = 1500;
 
 export interface ProcessDocumentPayload {
   documentId: string;
@@ -39,8 +45,40 @@ export class DocumentProcessor extends WorkerHost {
     private readonly embeddingService: EmbeddingService,
     private readonly documentChunkService: DocumentChunkService,
     private readonly chatCache: ChatCacheService,
+    private readonly llmService: LlmService,
   ) {
     super();
+  }
+
+  /**
+   * Contextual retrieval (Anthropic-style): one short situating sentence per
+   * chunk, prepended before embedding AND stored, so both dense and lexical
+   * retrieval see it. Opt-in via CONTEXTUAL_RETRIEVAL=true (adds one cheap
+   * LLM call per chunk to ingestion). Failures fall back to the bare chunk —
+   * context generation must never fail ingestion.
+   */
+  private async situateChunks(
+    docName: string,
+    docIntro: string,
+    contents: string[],
+  ): Promise<string[]> {
+    const out = new Array<string>(contents.length).fill('');
+    for (let i = 0; i < contents.length; i += CONTEXT_CONCURRENCY) {
+      const slice = contents.slice(i, i + CONTEXT_CONCURRENCY);
+      const results = await Promise.allSettled(
+        slice.map((chunk) =>
+          this.llmService.complete(
+            `Document "${docName}" begins:\n${docIntro}\n\n` +
+              `Here is one chunk from that document:\n${chunk.slice(0, 2000)}\n\n` +
+              `Write ONE short sentence situating this chunk within the overall document, to improve search retrieval of the chunk. Respond with only that sentence.`,
+          ),
+        ),
+      );
+      results.forEach((r, j) => {
+        if (r.status === 'fulfilled') out[i + j] = r.value.trim();
+      });
+    }
+    return out;
   }
 
   async process(job: Job<ProcessDocumentPayload>): Promise<void> {
@@ -102,16 +140,27 @@ export class DocumentProcessor extends WorkerHost {
       if (!okChunk) return;
 
       const startedAt = Date.now();
+      const contextual = process.env.CONTEXTUAL_RETRIEVAL === 'true';
+      const docIntro = contextual ? text.slice(0, CONTEXT_DOC_INTRO_CHARS) : '';
       const totalChunks = textChunks.length;
       for (let start = 0; start < totalChunks; start += EMBED_BATCH_SIZE) {
         const batch = textChunks.slice(start, start + EMBED_BATCH_SIZE);
-        const embeddings = await this.embeddingService.embedBatch(
-          batch.map((c) => c.content),
-        );
+        let contents = batch.map((c) => c.content);
+        if (contextual) {
+          const situating = await this.situateChunks(
+            document.name,
+            docIntro,
+            contents,
+          );
+          contents = contents.map((c, i) =>
+            situating[i] ? `${situating[i]}\n${c}` : c,
+          );
+        }
+        const embeddings = await this.embeddingService.embedBatch(contents);
         await this.documentChunkService.insertChunks(
           documentId,
           batch.map((c, i) => ({
-            content: c.content,
+            content: contents[i],
             embedding: embeddings[i],
             chunkIndex: c.index,
           })),

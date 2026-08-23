@@ -4,6 +4,22 @@ import { GeminiClient } from './gemini.client.js';
 
 export const LLM_PROVIDER_DEFAULT = 'stub';
 
+export interface ChatMessage {
+  role: 'system' | 'user' | 'assistant';
+  content: string;
+}
+
+/** Flatten role-separated messages for providers without a chat-message API. */
+function flattenMessages(messages: ChatMessage[]): string {
+  return messages
+    .map((m) =>
+      m.role === 'system'
+        ? m.content
+        : `${m.role === 'user' ? 'User' : 'Assistant'}: ${m.content}`,
+    )
+    .join('\n\n');
+}
+
 /**
  * Configurable LLM service: stub, ollama, openai, or gemini.
  * - complete(prompt): full response (no streaming).
@@ -46,18 +62,30 @@ export class LlmService {
     prompt: string,
     signal?: AbortSignal,
   ): AsyncGenerator<string, void, undefined> {
+    yield* this.streamMessages([{ role: 'user', content: prompt }], signal);
+  }
+
+  /**
+   * Stream tokens for role-separated messages. OpenAI receives them natively;
+   * Ollama/Gemini receive a flattened transcript (their clients here are
+   * single-prompt); stub ignores content.
+   */
+  async *streamMessages(
+    messages: ChatMessage[],
+    signal?: AbortSignal,
+  ): AsyncGenerator<string, void, undefined> {
     switch (this.provider) {
       case 'ollama':
-        yield* this.streamOllama(prompt, signal);
+        yield* this.streamOllama(flattenMessages(messages), signal);
         return;
       case 'gemini':
-        yield* this.geminiClient.stream(prompt, signal);
+        yield* this.geminiClient.stream(flattenMessages(messages), signal);
         return;
       case 'openai':
-        yield* this.streamOpenAI(prompt, signal);
+        yield* this.streamOpenAI(messages, signal);
         return;
       default:
-        yield* this.streamStub(prompt);
+        yield* this.streamStub(flattenMessages(messages));
     }
   }
 
@@ -65,15 +93,20 @@ export class LlmService {
    * Send prompt to the configured LLM and return the full completion (no streaming).
    */
   async complete(prompt: string): Promise<string> {
+    return this.completeMessages([{ role: 'user', content: prompt }]);
+  }
+
+  /** Full completion for role-separated messages (see streamMessages). */
+  async completeMessages(messages: ChatMessage[]): Promise<string> {
     switch (this.provider) {
       case 'ollama':
-        return this.completeOllama(prompt);
+        return this.completeOllama(flattenMessages(messages));
       case 'gemini':
-        return this.completeGemini(prompt);
+        return this.completeGemini(flattenMessages(messages));
       case 'openai':
-        return this.completeOpenAI(prompt);
+        return this.completeOpenAI(messages);
       default:
-        return this.completeStub(prompt);
+        return this.completeStub(flattenMessages(messages));
     }
   }
 
@@ -123,7 +156,7 @@ export class LlmService {
   /**
    * OpenAI: chat completions (no streaming).
    */
-  private async completeOpenAI(prompt: string): Promise<string> {
+  private async completeOpenAI(messages: ChatMessage[]): Promise<string> {
     const apiKey = this.config.get<string>('OPENAI_API_KEY');
     if (!apiKey) {
       throw new Error('OPENAI_API_KEY is required when LLM_PROVIDER=openai');
@@ -136,7 +169,7 @@ export class LlmService {
       },
       body: JSON.stringify({
         model: this.openaiModel,
-        messages: [{ role: 'user', content: prompt }],
+        messages,
         stream: false,
       }),
     });
@@ -241,7 +274,7 @@ export class LlmService {
    * Parses the `data: {...}` SSE lines and yields each delta's content, stopping at `data: [DONE]`.
    */
   private async *streamOpenAI(
-    prompt: string,
+    messages: ChatMessage[],
     signal?: AbortSignal,
   ): AsyncGenerator<string, void, undefined> {
     const apiKey = this.config.get<string>('OPENAI_API_KEY');
@@ -256,7 +289,7 @@ export class LlmService {
       },
       body: JSON.stringify({
         model: this.openaiModel,
-        messages: [{ role: 'user', content: prompt }],
+        messages,
         stream: true,
       }),
       signal,

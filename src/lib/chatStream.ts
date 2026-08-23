@@ -1,4 +1,4 @@
-import { streamChat } from './sseChat';
+import { streamChat, type ChatHistoryTurn } from './sseChat';
 import { getApiBaseUrl } from './api';
 import { useAppStore, type Message } from '@/stores/useAppStore';
 
@@ -28,6 +28,15 @@ const SSE_IDLE_TIMEOUT_MS = 90000;
 
 export async function sendChatMessage(documentId: string, content: string): Promise<void> {
   const store = useAppStore.getState();
+
+  // Snapshot recent turns BEFORE appending the new question, so the backend
+  // can resolve references like "elaborate on that". Server token-caps them.
+  const history: ChatHistoryTurn[] = (
+    store.conversations[documentId]?.messages ?? []
+  )
+    .filter((m) => !m.isError && !m.isStreaming && m.content.trim().length > 0)
+    .slice(-10)
+    .map((m) => ({ role: m.role, content: m.content.slice(0, 8000) }));
 
   const userMessage: Message = {
     id: `msg-${Date.now()}`,
@@ -117,6 +126,7 @@ export async function sendChatMessage(documentId: string, content: string): Prom
         signal,
         getToken: () => useAppStore.getState().accessToken,
         baseUrl,
+        history,
       },
     );
   } finally {

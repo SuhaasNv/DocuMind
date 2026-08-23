@@ -123,6 +123,7 @@ export class DocumentsController {
       userId: user.sub,
       documentId: id,
       question: dto.question,
+      history: dto.history,
     });
   }
 
@@ -160,7 +161,12 @@ export class DocumentsController {
 
     try {
       for await (const event of this.ragOrchestratorService.streamAnswer(
-        { userId: user.sub, documentId: id, question: dto.question },
+        {
+          userId: user.sub,
+          documentId: id,
+          question: dto.question,
+          history: dto.history,
+        },
         ac.signal,
       )) {
         if (ac.signal.aborted || res.writableEnded) break;

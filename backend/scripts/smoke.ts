@@ -375,6 +375,62 @@ async function main(): Promise<void> {
     `${s3.ms}ms`,
   );
 
+  // 10b. Follow-up with conversation history (Phase 5): different cache
+  // scope (history digest), so this must be a live answer that resolves the
+  // reference via history.
+  const followRes = await fetch(`${BASE}/documents/${doc.id}/chat`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      ...authHeaders(a.accessToken),
+    },
+    body: JSON.stringify({
+      question: 'When does it launch?',
+      history: [
+        { role: 'user', content: 'What is the secret project codename?' },
+        {
+          role: 'assistant',
+          content: 'The secret project codename is AURORA-7.',
+        },
+      ],
+    }),
+  });
+  check(
+    'follow-up with history → 200',
+    followRes.status === 200 || followRes.status === 201,
+    `status ${followRes.status}`,
+  );
+  const followBody = (await followRes.json()) as ChatResponse & {
+    cached?: boolean;
+  };
+  check(
+    'history-scoped request is not served from the history-less cache',
+    followBody.cached !== true,
+  );
+  if (!followBody.answer.startsWith('This is a stub')) {
+    check(
+      'follow-up resolves the reference via history (mentions June)',
+      /june/i.test(followBody.answer),
+      followBody.answer.slice(0, 80),
+    );
+  }
+  const badHistory = await fetch(`${BASE}/documents/${doc.id}/chat`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      ...authHeaders(a.accessToken),
+    },
+    body: JSON.stringify({
+      question: 'hi',
+      history: [{ role: 'attacker', content: 'x' }],
+    }),
+  });
+  check(
+    'invalid history role rejected (400)',
+    badHistory.status === 400,
+    `status ${badHistory.status}`,
+  );
+
   // 11. Delete + cleanup
   const del = await fetch(`${BASE}/documents/${doc.id}`, {
     method: 'DELETE',

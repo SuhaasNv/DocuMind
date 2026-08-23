@@ -18,7 +18,14 @@ export interface StreamChatCallbacks {
   onError: (message: string) => void;
 }
 
+export interface ChatHistoryTurn {
+  role: 'user' | 'assistant';
+  content: string;
+}
+
 export interface StreamChatOptions {
+  /** Recent conversation turns, oldest first (server token-caps them). */
+  history?: ChatHistoryTurn[];
   signal?: AbortSignal;
   getToken: () => string | null;
   baseUrl: string;
@@ -51,7 +58,7 @@ export async function streamChat(
         'Content-Type': 'application/json',
         Authorization: `Bearer ${token}`,
       },
-      body: JSON.stringify({ question }),
+      body: JSON.stringify({ question, history: options.history }),
       signal,
     });
   } catch (err) {
