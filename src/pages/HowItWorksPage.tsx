@@ -59,7 +59,7 @@ const HowItWorksPage = () => {
             From upload to answer in four steps. Your documents stay private and are never shared.
           </p>
           <p className="text-muted-foreground text-sm">
-            Powered by RAG — retrieval-augmented generation for accurate, document-grounded answers.
+            Powered by RAG, retrieval-augmented generation, for accurate, document-grounded answers.
           </p>
         </motion.section>
 

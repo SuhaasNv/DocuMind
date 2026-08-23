@@ -16,12 +16,12 @@ interface ChatInputProps {
 const STATUS_MESSAGES: Partial<Record<DocumentStatus, { icon: React.ElementType; text: string; className: string }>> = {
   PENDING: {
     icon: Clock,
-    text: 'Queued for processing — chat will be available shortly.',
+    text: 'Queued for processing. Chat will be available shortly.',
     className: 'text-yellow-400 bg-yellow-500/10 border-yellow-500/20',
   },
   PROCESSING: {
     icon: Loader2,
-    text: 'Processing document — almost ready…',
+    text: 'Processing document, almost ready…',
     className: 'text-blue-400 bg-blue-500/10 border-blue-500/20',
   },
   FAILED: {
@@ -158,7 +158,7 @@ const ChatInput = ({
 
         <p id="chat-input-hint" className="text-xs text-muted-foreground text-center mt-3">
           {isLoading
-            ? 'Generating response — press Stop to cancel.'
+            ? 'Generating response. Press Stop to cancel.'
             : 'AI responses are grounded in your document. Press Enter to send · Shift+Enter for new line.'}
         </p>
       </form>

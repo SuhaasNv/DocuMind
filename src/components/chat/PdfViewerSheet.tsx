@@ -52,13 +52,13 @@ export function PdfViewerSheet({
       >
         <SheetHeader className="px-4 py-3 border-b border-border shrink-0 text-left">
           <SheetTitle className="text-sm font-medium truncate pr-8">
-            Source [{source?.marker ?? '–'}] — Page {page}
+            Source [{source?.marker ?? '?'}] · Page {page}
             {numPages ? ` of ${numPages}` : ''} · {documentName}
           </SheetTitle>
           <SheetDescription className="text-xs">
             {hasPageData
               ? 'Cited passage highlighted where found.'
-              : 'No page data for this document yet — showing page 1. Re-upload or retry processing for precise citations.'}
+              : 'No page data for this document yet. Showing page 1; re-upload or retry processing for precise citations.'}
           </SheetDescription>
         </SheetHeader>
 

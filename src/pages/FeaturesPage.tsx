@@ -6,7 +6,7 @@ const features = [
     icon: Upload,
     title: 'Upload PDFs',
     description: 'Simply drag and drop your documents. We support PDF files of any size.',
-    detail: 'No conversion needed — upload PDFs directly and our pipeline extracts text, chunks, and embeddings automatically.',
+    detail: 'No conversion needed: upload PDFs directly and our pipeline extracts text, chunks, and embeddings automatically.',
   },
   {
     icon: Zap,

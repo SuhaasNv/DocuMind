@@ -115,7 +115,7 @@ const JOB_STATE_CONFIG = {
 // ── Helpers ───────────────────────────────────────────────────────────────
 
 function formatBytes(bytes?: number) {
-  if (!bytes) return '—';
+  if (!bytes) return '-';
   if (bytes < 1024) return `${bytes} B`;
   if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
@@ -169,7 +169,7 @@ function StatCard({
 }
 
 function HealthBadge({ status }: { status: 'ok' | 'error' | 'configured' | 'not_configured' | undefined }) {
-  if (!status) return <span className="text-muted-foreground text-xs">—</span>;
+  if (!status) return <span className="text-muted-foreground text-xs">-</span>;
   const ok = status === 'ok' || status === 'configured';
   return (
     <span
@@ -532,7 +532,7 @@ export default function AdminDashboard() {
                   All Users
                   {usersData && (
                     <span className="text-sm font-normal text-muted-foreground">
-                      — {usersData.total} total
+                      · {usersData.total} total
                     </span>
                   )}
                 </CardTitle>
@@ -608,7 +608,7 @@ export default function AdminDashboard() {
                   All Documents
                   {docsData && (
                     <span className="text-sm font-normal text-muted-foreground">
-                      — {docsData.total} total
+                      · {docsData.total} total
                     </span>
                   )}
                 </CardTitle>
@@ -779,7 +779,7 @@ export default function AdminDashboard() {
                   <Briefcase className="w-4 h-4" />
                   {JOB_STATE_CONFIG[jobState].label} Jobs
                   <span className="text-sm font-normal text-muted-foreground">
-                    — {jobStats?.counts?.[jobState] ?? 0}
+                    · {jobStats?.counts?.[jobState] ?? 0}
                   </span>
                 </CardTitle>
               </CardHeader>
@@ -820,23 +820,23 @@ export default function AdminDashboard() {
                       {jobStats?.jobs?.[jobState]?.map((job) => (
                         <TableRow key={job.id} className="hover:bg-muted/30">
                           <TableCell className="text-muted-foreground text-xs font-mono">
-                            {job.id ?? '—'}
+                            {job.id ?? '-'}
                           </TableCell>
                           <TableCell className="text-sm">{job.name}</TableCell>
                           <TableCell className="text-sm text-muted-foreground font-mono truncate max-w-[140px]">
-                            {(job.data as { documentId?: string })?.documentId ?? '—'}
+                            {(job.data as { documentId?: string })?.documentId ?? '-'}
                           </TableCell>
                           <TableCell className="text-sm">{job.attemptsMade}</TableCell>
                           <TableCell className="text-sm text-muted-foreground max-w-[220px] truncate">
                             {jobState === 'failed'
-                              ? (job.failedReason ?? '—')
+                              ? (job.failedReason ?? '-')
                               : new Date(job.timestamp).toLocaleString()}
                           </TableCell>
                           {jobState === 'completed' && (
                             <TableCell className="text-sm text-muted-foreground">
                               {job.finishedOn
                                 ? new Date(job.finishedOn).toLocaleString()
-                                : '—'}
+                                : '-'}
                             </TableCell>
                           )}
                         </TableRow>

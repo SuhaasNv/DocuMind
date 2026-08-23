@@ -124,7 +124,7 @@ const SettingsPage = () => {
         toast.error(msg || 'Failed to change password');
       }
     } catch {
-      toast.error('Network error — could not reach the backend');
+      toast.error('Network error: could not reach the backend');
     } finally {
       setPwSubmitting(false);
     }
@@ -176,7 +176,7 @@ const SettingsPage = () => {
               <CardContent className="space-y-3">
                 <div className="flex items-center justify-between gap-4">
                   <Label className="text-muted-foreground text-xs">Full name</Label>
-                  <p className="font-medium text-sm truncate">{user.name || '—'}</p>
+                  <p className="font-medium text-sm truncate">{user.name || '-'}</p>
                 </div>
                 <div className="flex items-center justify-between gap-4">
                   <Label className="text-muted-foreground text-xs">Email</Label>

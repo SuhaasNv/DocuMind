@@ -91,7 +91,7 @@ const ContactPage = () => {
                 <div>
                   <h2 className="text-lg font-semibold text-foreground mb-1">Response time</h2>
                   <p className="text-muted-foreground text-sm">
-                    We aim to reply to emails within 1–2 business days.
+                    We aim to reply to emails within 1-2 business days.
                   </p>
                 </div>
               </div>

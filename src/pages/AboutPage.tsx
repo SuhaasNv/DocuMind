@@ -49,7 +49,7 @@ const projects = [
     title: 'Plant Leaf Disease Detection System',
     bullets: [
       'Improved classification accuracy by 12% for early disease detection by applying advanced data augmentation and preprocessing techniques.',
-      'Trained a novel Convolutional Neural Network (CNN) model — applying deep-learning techniques for computer-vision tasks — to classify 38 plant-disease categories across a 87,000+ image dataset, improving early-detection accuracy by 12%.',
+      'Trained a novel Convolutional Neural Network (CNN) model, applying deep-learning techniques for computer-vision tasks, to classify 38 plant-disease categories across a 87,000+ image dataset, improving early-detection accuracy by 12%.',
     ],
   },
 ];
@@ -74,10 +74,10 @@ const education = [
 ];
 
 const certifications = [
-  'AWS Cloud Practitioner – Amazon',
-  'Microsoft Azure AZ-104 – Microsoft',
-  'Generative AI – IBM',
-  'Agile with Atlassian Jira – Atlassian',
+  'AWS Cloud Practitioner - Amazon',
+  'Microsoft Azure AZ-104 - Microsoft',
+  'Generative AI - IBM',
+  'Agile with Atlassian Jira - Atlassian',
 ];
 
 const containerVariants = {

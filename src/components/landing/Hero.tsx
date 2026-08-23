@@ -89,7 +89,7 @@ const Hero = () => {
               className="text-neutral-400 text-sm sm:text-base md:text-lg mb-8 leading-relaxed max-w-md"
             >
               Upload PDFs and let AI understand them for you. Ask questions,
-              get answers grounded in your documents — no hallucinations, just
+              get answers grounded in your documents. No hallucinations, just
               facts.
             </motion.p>
 

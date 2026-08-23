@@ -275,8 +275,8 @@ const MessageBubble = memo(function MessageBubble({ message, onRegenerate, onOpe
                           {src.pageStart != null
                             ? src.pageStart === src.pageEnd || src.pageEnd == null
                               ? `Page ${src.pageStart}`
-                              : `Pages ${src.pageStart}–${src.pageEnd}`
-                            : 'Page unknown — reprocess for precise citations'}
+                              : `Pages ${src.pageStart}-${src.pageEnd}`
+                            : 'Page unknown. Reprocess for precise citations'}
                         </span>
                         <span className="block text-muted-foreground leading-relaxed line-clamp-2">
                           {cleaned || `Passage ${src.chunkIndex + 1}`}
