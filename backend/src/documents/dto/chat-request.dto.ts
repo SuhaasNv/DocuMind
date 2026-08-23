@@ -1,6 +1,7 @@
 import { Type } from 'class-transformer';
 import {
   IsArray,
+  IsBoolean,
   IsIn,
   IsOptional,
   IsString,
@@ -33,4 +34,9 @@ export class ChatRequestDto {
   @ValidateNested({ each: true })
   @Type(() => ChatHistoryTurnDto)
   history?: ChatHistoryTurnDto[];
+
+  /** When true, the response includes a RagDebugDto (retrieval transparency). */
+  @IsOptional()
+  @IsBoolean()
+  debug?: boolean;
 }

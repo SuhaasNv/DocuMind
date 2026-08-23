@@ -169,6 +169,7 @@ export class DocumentsController {
       documentId: id,
       question: dto.question,
       history: dto.history,
+      debug: dto.debug,
     });
   }
 
@@ -211,6 +212,7 @@ export class DocumentsController {
           documentId: id,
           question: dto.question,
           history: dto.history,
+          debug: dto.debug,
         },
         ac.signal,
       )) {

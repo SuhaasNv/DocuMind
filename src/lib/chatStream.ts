@@ -2,6 +2,7 @@ import { streamChat, type ChatHistoryTurn } from './sseChat';
 import { getApiBaseUrl } from './api';
 import { parseFollowups, stripStreamingTail } from './followups';
 import { useAppStore, type Message } from '@/stores/useAppStore';
+import { usePreferencesStore } from '@/stores/usePreferencesStore';
 
 /**
  * Module-level chat stream controller.
@@ -142,7 +143,7 @@ export async function sendChatMessage(documentId: string, content: string): Prom
           fullContent += chunk;
           scheduleFlush();
         },
-        onDone: (sources, serverFollowUps) => {
+        onDone: (sources, serverFollowUps, debug) => {
           clearIdleTimer();
           if (signal.aborted) return;
           // Cache replays stream the already-stripped answer and carry the
@@ -155,6 +156,7 @@ export async function sendChatMessage(documentId: string, content: string): Prom
           if (sources.length > 0) s.setMessageSources(documentId, assistantId, sources);
           const followUps = serverFollowUps.length > 0 ? serverFollowUps : parsed.followUps;
           if (followUps.length > 0) s.setMessageFollowUps(documentId, assistantId, followUps);
+          if (debug) s.setMessageDebug(documentId, assistantId, debug);
         },
         onError: (message) => {
           clearIdleTimer();
@@ -175,6 +177,7 @@ export async function sendChatMessage(documentId: string, content: string): Prom
         getToken: () => useAppStore.getState().accessToken,
         baseUrl,
         history,
+        debug: usePreferencesStore.getState().showRetrievalDebug,
       },
     );
   } finally {

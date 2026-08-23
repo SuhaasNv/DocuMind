@@ -1,6 +1,10 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { createHash } from 'node:crypto';
-import { RetrievalService } from './retrieval.service.js';
+import {
+  RetrievalService,
+  type RetrievalDebugCollector,
+  type RrfCandidateMeta,
+} from './retrieval.service.js';
 import { PromptService, type HistoryTurn } from '../rag/prompt.service.js';
 import { LlmService } from '../rag/llm.service.js';
 import { ChatCacheService } from '../rag/chat-cache.service.js';
@@ -10,6 +14,10 @@ import { logRagLatency } from '../rag/rag-latency.logger.js';
 import type {
   ChatResponseDto,
   ChatSourceDto,
+  RagCacheStatus,
+  RagDebugCandidateDto,
+  RagDebugDto,
+  RagDebugTimingsDto,
 } from './dto/chat-response.dto.js';
 import type { RetrievalResultDto } from './dto/retrieval-response.dto.js';
 
@@ -39,6 +47,8 @@ export interface RagChatInput {
   topK?: number;
   /** Recent conversation turns, oldest first (token-capped downstream). */
   history?: HistoryTurn[];
+  /** When true, collect and return retrieval debug info (RagDebugDto). */
+  debug?: boolean;
 }
 
 /** Stream event: delta (token) or done (sources). Transport-agnostic; consumed by SSE or other transports. */
@@ -51,8 +61,88 @@ export type RagStreamEvent =
         sources: ChatSourceDto[];
         cached?: boolean;
         followUps?: string[];
+        debug?: RagDebugDto;
       };
     };
+
+export interface BuildRagDebugArgs {
+  /** The request's debug flag: falsy → no payload, zero work. */
+  debug: boolean | undefined;
+  cacheStatus: RagCacheStatus;
+  semanticSimilarity?: number;
+  timings: RagDebugTimingsDto;
+  /**
+   * Fusion metadata from the retrieval debug collector, RRF-desc sorted so
+   * the first `retained` entries line up 1:1 with the retrieval results
+   * array (empty on cache hits).
+   */
+  candidates?: RrfCandidateMeta[];
+  /**
+   * Positions into the retrieval results array that made it into the prompt,
+   * in prompt (marker) order: includedPositions[j] gets marker j+1.
+   */
+  includedPositions?: number[];
+  topK: number;
+  historyTurns: number;
+}
+
+/**
+ * Assemble the RagDebugDto for a chat response. Pure and exported for tests.
+ * Returns undefined unless the request explicitly set debug: true, so
+ * non-debug responses never carry a debug key.
+ */
+export function buildRagDebug(
+  args: BuildRagDebugArgs,
+): RagDebugDto | undefined {
+  if (!args.debug) return undefined;
+  const round = (n: number): number => Math.round(n * 10) / 10;
+  // Retained candidate at pool index i IS retrieval result i, so a position
+  // in includedPositions maps straight onto the candidate pool.
+  const markerByPosition = new Map(
+    (args.includedPositions ?? []).map((pos, j) => [pos, j + 1]),
+  );
+  const candidates: RagDebugCandidateDto[] = (args.candidates ?? []).map(
+    (c, i) => {
+      const marker = c.retained ? markerByPosition.get(i) : undefined;
+      return {
+        chunkIndex: c.chunkIndex,
+        documentId: c.documentId,
+        ...(c.denseScore !== undefined ? { denseScore: c.denseScore } : {}),
+        ...(c.lexicalScore !== undefined
+          ? { lexicalScore: c.lexicalScore }
+          : {}),
+        rrfScore: c.rrfScore,
+        retained: c.retained,
+        included: marker !== undefined,
+        ...(marker !== undefined ? { marker } : {}),
+      };
+    },
+  );
+  return {
+    cacheStatus: args.cacheStatus,
+    ...(args.semanticSimilarity !== undefined
+      ? { semanticSimilarity: args.semanticSimilarity }
+      : {}),
+    timings: {
+      embedMs: round(args.timings.embedMs),
+      retrievalMs: round(args.timings.retrievalMs),
+      promptBuildMs: round(args.timings.promptBuildMs),
+      ...(args.timings.llmFirstTokenMs !== undefined
+        ? { llmFirstTokenMs: round(args.timings.llmFirstTokenMs) }
+        : {}),
+      totalMs: round(args.timings.totalMs),
+    },
+    candidates,
+    topK: args.topK,
+    historyTurns: args.historyTurns,
+  };
+}
+
+/** Score of the top-ranked source, or null when there are none. */
+function topScoreOf(sources: ChatSourceDto[]): number | null {
+  if (sources.length === 0) return null;
+  return sources.reduce((max, s) => (s.score > max ? s.score : max), -Infinity);
+}
 
 /**
  * RAG v1: grounded answer generation without streaming.
@@ -92,17 +182,32 @@ export class RagOrchestratorService {
     settingsKey: string,
     question: string,
     t0: number,
-  ): Promise<{ hit: ChatResponseDto | null; queryEmbedding: number[] }> {
+  ): Promise<{
+    hit: ChatResponseDto | null;
+    queryEmbedding: number[];
+    cacheStatus: RagCacheStatus;
+    semanticSimilarity?: number;
+    /** Time spent computing the query embedding (0 when served from cache). */
+    embedMs: number;
+  }> {
     const exact = await this.chatCache.getExact(scope, settingsKey, question);
     if (exact) {
       this.logger.log(
         `[chat-cache] exact hit scope=${scope} in ${Math.round(performance.now() - t0)}ms`,
       );
-      return { hit: { ...exact, cached: true }, queryEmbedding: [] };
+      return {
+        hit: { ...exact, cached: true },
+        queryEmbedding: [],
+        cacheStatus: 'exact',
+        embedMs: 0,
+      };
     }
     let queryEmbedding = await this.chatCache.getQueryEmbedding(question);
+    let embedMs = 0;
     if (!queryEmbedding) {
+      const t0Embed = performance.now();
       queryEmbedding = await this.embeddingService.embed(question);
+      embedMs = performance.now() - t0Embed;
       void this.chatCache.storeQueryEmbedding(question, queryEmbedding);
     }
     const semantic = await this.chatCache.getSemantic(
@@ -114,10 +219,16 @@ export class RagOrchestratorService {
       this.logger.log(
         `[chat-cache] semantic hit scope=${scope} sim=${semantic.similarity.toFixed(4)} in ${Math.round(performance.now() - t0)}ms`,
       );
-      return { hit: { ...semantic.hit, cached: true }, queryEmbedding };
+      return {
+        hit: { ...semantic.hit, cached: true },
+        queryEmbedding,
+        cacheStatus: 'semantic',
+        semanticSimilarity: semantic.similarity,
+        embedMs,
+      };
     }
     this.logger.log(`[chat-cache] miss scope=${scope}`);
-    return { hit: null, queryEmbedding };
+    return { hit: null, queryEmbedding, cacheStatus: 'miss', embedMs };
   }
 
   /** Cache scope: the collection scope key for collection chat, else the document id. */
@@ -131,24 +242,31 @@ export class RagOrchestratorService {
     question: string,
     topK: number,
     queryEmbedding: number[],
+    debugCollector?: RetrievalDebugCollector,
   ): Promise<RetrievalResultDto[]> {
     if (input.collection) {
-      return this.retrievalService.retrieveAcross({
+      return this.retrievalService.retrieveAcross(
+        {
+          userId: input.userId,
+          documentIds: input.collection.documents.map((d) => d.id),
+          query: question,
+          topK,
+          queryEmbedding,
+        },
+        debugCollector,
+      );
+    }
+    if (!input.documentId) return Promise.resolve([]);
+    return this.retrievalService.retrieve(
+      {
         userId: input.userId,
-        documentIds: input.collection.documents.map((d) => d.id),
+        documentId: input.documentId,
         query: question,
         topK,
         queryEmbedding,
-      });
-    }
-    if (!input.documentId) return Promise.resolve([]);
-    return this.retrievalService.retrieve({
-      userId: input.userId,
-      documentId: input.documentId,
-      query: question,
-      topK,
-      queryEmbedding,
-    });
+      },
+      debugCollector,
+    );
   }
 
   /**
@@ -158,6 +276,7 @@ export class RagOrchestratorService {
   async chat(input: RagChatInput): Promise<ChatResponseDto> {
     const { question, topK = DEFAULT_TOP_K } = input;
     const history = input.history ?? [];
+    const t0Total = performance.now();
     const trimmedQuestion = question?.trim() ?? '';
     if (!trimmedQuestion) {
       return { answer: NO_INFO_ANSWER, sources: [] };
@@ -169,16 +288,47 @@ export class RagOrchestratorService {
       scope,
       settingsKey,
       trimmedQuestion,
-      performance.now(),
+      t0Total,
     );
-    if (cache.hit) return cache.hit;
+    if (cache.hit) {
+      const totalMs = performance.now() - t0Total;
+      logRagLatency({
+        scope,
+        cacheStatus: cache.cacheStatus,
+        chunkCount: cache.hit.sources.length,
+        topScore: topScoreOf(cache.hit.sources),
+        embedMs: cache.embedMs,
+        retrievalMs: 0,
+        promptBuildMs: 0,
+        ttftMs: null,
+        totalMs,
+      });
+      const debug = buildRagDebug({
+        debug: input.debug,
+        cacheStatus: cache.cacheStatus,
+        semanticSimilarity: cache.semanticSimilarity,
+        timings: {
+          embedMs: cache.embedMs,
+          retrievalMs: 0,
+          promptBuildMs: 0,
+          totalMs,
+        },
+        topK,
+        historyTurns: history.length,
+      });
+      return debug ? { ...cache.hit, debug } : cache.hit;
+    }
 
+    const debugCollector: RetrievalDebugCollector | undefined = input.debug
+      ? {}
+      : undefined;
     const t0Retrieval = performance.now();
     const chunks = await this.retrieveFor(
       input,
       trimmedQuestion,
       topK,
       cache.queryEmbedding,
+      debugCollector,
     );
     const retrievalMs = performance.now() - t0Retrieval;
 
@@ -201,11 +351,23 @@ export class RagOrchestratorService {
 
     const raw = await this.llmService.completeMessages(messages);
     const { display: answer, followUps } = parseFollowups(raw);
-
-    logRagLatency({ retrievalMs, promptBuildMs });
+    const totalMs = performance.now() - t0Total;
 
     const sources = this.buildSources(input, chunks, includedPositions);
 
+    logRagLatency({
+      scope,
+      cacheStatus: 'miss',
+      chunkCount: chunks.length,
+      topScore: chunks[0]?.score ?? null,
+      embedMs: cache.embedMs,
+      retrievalMs,
+      promptBuildMs,
+      ttftMs: null,
+      totalMs,
+    });
+
+    // Cached entries never store debug data — it is recomputed per request.
     void this.chatCache.store(
       scope,
       settingsKey,
@@ -215,10 +377,20 @@ export class RagOrchestratorService {
       sources,
       followUps,
     );
+    const debug = buildRagDebug({
+      debug: input.debug,
+      cacheStatus: 'miss',
+      timings: { embedMs: cache.embedMs, retrievalMs, promptBuildMs, totalMs },
+      candidates: debugCollector?.candidates,
+      includedPositions,
+      topK,
+      historyTurns: history.length,
+    });
     return {
       answer,
       sources,
       ...(followUps.length > 0 ? { followUps } : {}),
+      ...(debug ? { debug } : {}),
     };
   }
 
@@ -283,6 +455,7 @@ export class RagOrchestratorService {
   ): AsyncGenerator<RagStreamEvent, void, undefined> {
     const { question, topK = DEFAULT_TOP_K } = input;
     const history = input.history ?? [];
+    const t0Total = performance.now();
     const trimmedQuestion = question?.trim() ?? '';
 
     if (!trimmedQuestion) {
@@ -297,7 +470,7 @@ export class RagOrchestratorService {
       scope,
       settingsKey,
       trimmedQuestion,
-      performance.now(),
+      t0Total,
     );
     if (cache.hit) {
       // Replay the cached answer over the same SSE protocol, in word-group
@@ -312,6 +485,31 @@ export class RagOrchestratorService {
         }
       }
       if (piece.length > 0) yield { type: 'delta', data: piece };
+      const totalMs = performance.now() - t0Total;
+      logRagLatency({
+        scope,
+        cacheStatus: cache.cacheStatus,
+        chunkCount: cache.hit.sources.length,
+        topScore: topScoreOf(cache.hit.sources),
+        embedMs: cache.embedMs,
+        retrievalMs: 0,
+        promptBuildMs: 0,
+        ttftMs: null,
+        totalMs,
+      });
+      const debug = buildRagDebug({
+        debug: input.debug,
+        cacheStatus: cache.cacheStatus,
+        semanticSimilarity: cache.semanticSimilarity,
+        timings: {
+          embedMs: cache.embedMs,
+          retrievalMs: 0,
+          promptBuildMs: 0,
+          totalMs,
+        },
+        topK,
+        historyTurns: history.length,
+      });
       yield {
         type: 'done',
         data: {
@@ -320,17 +518,22 @@ export class RagOrchestratorService {
           ...(cache.hit.followUps?.length
             ? { followUps: cache.hit.followUps }
             : {}),
+          ...(debug ? { debug } : {}),
         },
       };
       return;
     }
 
+    const debugCollector: RetrievalDebugCollector | undefined = input.debug
+      ? {}
+      : undefined;
     const t0Retrieval = performance.now();
     const chunks = await this.retrieveFor(
       input,
       trimmedQuestion,
       topK,
       cache.queryEmbedding,
+      debugCollector,
     );
     const retrievalMs = performance.now() - t0Retrieval;
 
@@ -356,6 +559,7 @@ export class RagOrchestratorService {
     const promptBuildMs = performance.now() - t0Prompt;
 
     let llmFirstTokenMs: number | undefined;
+    let ttftMs: number | undefined;
     let firstTokenRecorded = false;
     const t0Llm = performance.now();
 
@@ -370,6 +574,7 @@ export class RagOrchestratorService {
         if (signal?.aborted) break;
         if (!firstTokenRecorded) {
           llmFirstTokenMs = performance.now() - t0Llm;
+          ttftMs = performance.now() - t0Total;
           firstTokenRecorded = true;
         }
         tokenYielded = true;
@@ -398,7 +603,18 @@ export class RagOrchestratorService {
       // Always send 'done' so the frontend can exit streaming state (stops blinking cursor).
       // If the LLM stream errors or is aborted, we still yield done with the sources we have.
       const sources = this.buildSources(input, chunks, includedPositions);
-      logRagLatency({ retrievalMs, promptBuildMs, llmFirstTokenMs });
+      const totalMs = performance.now() - t0Total;
+      logRagLatency({
+        scope,
+        cacheStatus: 'miss',
+        chunkCount: chunks.length,
+        topScore: chunks[0]?.score ?? null,
+        embedMs: cache.embedMs,
+        retrievalMs,
+        promptBuildMs,
+        ttftMs: ttftMs ?? null,
+        totalMs,
+      });
       // Strip the FOLLOWUPS line BEFORE caching so replays serve the display
       // answer; followUps are stored separately so replays keep the chips.
       const completed = !errored && !signal?.aborted && fullAnswer.length > 0;
@@ -406,6 +622,7 @@ export class RagOrchestratorService {
         ? parseFollowups(fullAnswer)
         : { display: '', followUps: [] };
       if (completed && display.length > 0) {
+        // Cached entries never store debug data — it is recomputed per request.
         void this.chatCache.store(
           scope,
           settingsKey,
@@ -416,11 +633,27 @@ export class RagOrchestratorService {
           followUps,
         );
       }
+      const debug = buildRagDebug({
+        debug: input.debug,
+        cacheStatus: 'miss',
+        timings: {
+          embedMs: cache.embedMs,
+          retrievalMs,
+          promptBuildMs,
+          ...(llmFirstTokenMs !== undefined ? { llmFirstTokenMs } : {}),
+          totalMs,
+        },
+        candidates: debugCollector?.candidates,
+        includedPositions,
+        topK,
+        historyTurns: history.length,
+      });
       yield {
         type: 'done',
         data: {
           sources,
           ...(followUps.length > 0 ? { followUps } : {}),
+          ...(debug ? { debug } : {}),
         },
       };
     }

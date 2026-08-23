@@ -22,9 +22,48 @@ export interface ChatSource {
   documentName?: string;
 }
 
+export interface RetrievalDebugCandidate {
+  chunkIndex: number;
+  documentId?: string;
+  denseScore?: number;
+  lexicalScore?: number;
+  rrfScore: number;
+  /** Survived RRF top-K selection. */
+  retained: boolean;
+  /** Survived prompt context trimming (sent to the LLM). */
+  included: boolean;
+  /** 1-based citation number matching [n] in the answer; set only when included. */
+  marker?: number;
+}
+
+export interface RetrievalDebugTimings {
+  embedMs: number;
+  retrievalMs: number;
+  promptBuildMs: number;
+  llmFirstTokenMs?: number;
+  totalMs: number;
+}
+
+/** Backend RagDebugDto: retrieval transparency payload on the done event. */
+export interface RetrievalDebug {
+  cacheStatus: 'miss' | 'exact' | 'semantic';
+  semanticSimilarity?: number;
+  timings: RetrievalDebugTimings;
+  candidates: RetrievalDebugCandidate[];
+  topK: number;
+  historyTurns: number;
+}
+
+/** Keep only a plausible debug object from an untrusted done-event payload. */
+function parseDebugPayload(value: unknown): RetrievalDebug | undefined {
+  return typeof value === 'object' && value !== null
+    ? (value as RetrievalDebug)
+    : undefined;
+}
+
 export interface StreamChatCallbacks {
   onDelta: (chunk: string) => void;
-  onDone: (sources: ChatSource[], followUps: string[]) => void;
+  onDone: (sources: ChatSource[], followUps: string[], debug?: RetrievalDebug) => void;
   onError: (message: string) => void;
 }
 
@@ -43,6 +82,8 @@ function parseFollowUpsPayload(value: unknown): string[] {
 export interface StreamChatOptions {
   /** Recent conversation turns, oldest first (server token-caps them). */
   history?: ChatHistoryTurn[];
+  /** When true, ask the backend for retrieval debug info on the done event. */
+  debug?: boolean;
   signal?: AbortSignal;
   getToken: () => string | null;
   baseUrl: string;
@@ -77,7 +118,12 @@ export async function streamChat(
         'Content-Type': 'application/json',
         Authorization: `Bearer ${token}`,
       },
-      body: JSON.stringify({ question, history: options.history }),
+      body: JSON.stringify({
+        question,
+        history: options.history,
+        // Undefined when off, so the key is omitted from the payload entirely.
+        debug: options.debug ? true : undefined,
+      }),
       signal,
     });
   } catch (err) {
@@ -149,10 +195,12 @@ export async function streamChat(
             const payload = JSON.parse(dataLine) as {
               sources?: ChatSource[];
               followUps?: unknown;
+              debug?: unknown;
             };
             callbacks.onDone(
               Array.isArray(payload.sources) ? payload.sources : [],
               parseFollowUpsPayload(payload.followUps),
+              parseDebugPayload(payload.debug),
             );
           } catch {
             callbacks.onDone([], []);
@@ -185,10 +233,12 @@ export async function streamChat(
           const payload = JSON.parse(dataLine) as {
             sources?: ChatSource[];
             followUps?: unknown;
+            debug?: unknown;
           };
           callbacks.onDone(
             Array.isArray(payload.sources) ? payload.sources : [],
             parseFollowUpsPayload(payload.followUps),
+            parseDebugPayload(payload.debug),
           );
         } catch {
           callbacks.onDone([], []);

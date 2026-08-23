@@ -1,4 +1,4 @@
-import { rrfFuse } from './retrieval.service.js';
+import { rrfFuse, rrfFuseDebug } from './retrieval.service.js';
 
 interface Row {
   id: string;
@@ -69,5 +69,50 @@ describe('rrfFuse (Reciprocal Rank Fusion, k=60)', () => {
       pageStart: 2,
       pageEnd: 3,
     });
+  });
+});
+
+describe('rrfFuseDebug', () => {
+  it('returns the same results as rrfFuse', () => {
+    const dense = [row('a', 0.9, 1), row('b', 0.8, 2), row('c', 0.7, 3)];
+    const lexical = [row('d', 0.5, 4), row('b', 0.4, 2)];
+    expect(rrfFuseDebug([dense, lexical], 2).results).toEqual(
+      rrfFuse([dense, lexical], 2),
+    );
+  });
+
+  it('reports per-list scores: dense-only, lexical-only, and both', () => {
+    const dense = [row('a', 0.9, 1), row('b', 0.8, 2)];
+    const lexical = [row('b', 0.004, 2), row('c', 0.002, 3)];
+    const { candidates } = rrfFuseDebug([dense, lexical], 4);
+    const byIdx = new Map(candidates.map((c) => [c.chunkIndex, c]));
+    expect(byIdx.get(1)).toMatchObject({ denseScore: 0.9 });
+    expect(byIdx.get(1)?.lexicalScore).toBeUndefined();
+    expect(byIdx.get(2)).toMatchObject({
+      denseScore: 0.8,
+      lexicalScore: 0.004,
+    });
+    expect(byIdx.get(3)).toMatchObject({ lexicalScore: 0.002 });
+    expect(byIdx.get(3)?.denseScore).toBeUndefined();
+  });
+
+  it('computes RRF scores (1-based ranks, k=60) and sorts descending', () => {
+    const dense = [row('a', 0.9, 1), row('b', 0.8, 2)];
+    const lexical = [row('b', 0.004, 2)];
+    const { candidates } = rrfFuseDebug([dense, lexical], 4);
+    expect(candidates[0].chunkIndex).toBe(2); // in both lists
+    expect(candidates[0].rrfScore).toBeCloseTo(1 / 62 + 1 / 61, 12);
+    expect(candidates[1].rrfScore).toBeCloseTo(1 / 61, 12);
+  });
+
+  it('marks only the top-K candidates as retained', () => {
+    const dense = [row('a', 0.9, 1), row('b', 0.8, 2), row('c', 0.7, 3)];
+    const { candidates, results } = rrfFuseDebug([dense, []], 2);
+    expect(candidates).toHaveLength(3);
+    expect(candidates.map((c) => c.retained)).toEqual([true, true, false]);
+    expect(results).toHaveLength(2);
+    expect(new Set(results.map((r) => r.chunkIndex))).toEqual(
+      new Set(candidates.filter((c) => c.retained).map((c) => c.chunkIndex)),
+    );
   });
 });

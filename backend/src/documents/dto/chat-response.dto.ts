@@ -16,6 +16,46 @@ export interface ChatSourceDto {
   documentName?: string;
 }
 
+export type RagCacheStatus = 'miss' | 'exact' | 'semantic';
+
+export interface RagDebugCandidateDto {
+  chunkIndex: number;
+  /** Which document this candidate came from (relevant for collection chat). */
+  documentId?: string;
+  /** Dense (pgvector cosine) score, when the chunk appeared in the dense list. */
+  denseScore?: number;
+  /** Lexical (ts_rank_cd) score, when the chunk appeared in the lexical list. */
+  lexicalScore?: number;
+  /** Reciprocal Rank Fusion score used for the final ranking. */
+  rrfScore: number;
+  /** Survived RRF top-K selection. */
+  retained: boolean;
+  /** Survived prompt context trimming (actually sent to the LLM). */
+  included: boolean;
+  /** 1-based citation number matching [n] in the answer; set only when included. */
+  marker?: number;
+}
+
+export interface RagDebugTimingsDto {
+  embedMs: number;
+  retrievalMs: number;
+  promptBuildMs: number;
+  llmFirstTokenMs?: number;
+  totalMs: number;
+}
+
+/** Retrieval transparency payload, returned only when the request set debug: true. */
+export interface RagDebugDto {
+  cacheStatus: RagCacheStatus;
+  /** Similarity of the semantic cache hit, when cacheStatus === 'semantic'. */
+  semanticSimilarity?: number;
+  timings: RagDebugTimingsDto;
+  /** Empty for cache hits (no retrieval ran). */
+  candidates: RagDebugCandidateDto[];
+  topK: number;
+  historyTurns: number;
+}
+
 export interface ChatResponseDto {
   answer: string;
   sources: ChatSourceDto[];
@@ -23,4 +63,6 @@ export interface ChatResponseDto {
   cached?: boolean;
   /** Follow-up questions parsed from the model's trailing FOLLOWUPS line. */
   followUps?: string[];
+  /** Present only when the request set debug: true. Never cached. */
+  debug?: RagDebugDto;
 }

@@ -41,6 +41,63 @@ interface CandidateRow {
   page_end: number | null;
 }
 
+/** Per-candidate fusion metadata (debug variant only). */
+export interface RrfCandidateMeta {
+  chunkIndex: number;
+  documentId: string;
+  /** Cosine similarity, when the chunk appeared in the dense list. */
+  denseScore?: number;
+  /** ts_rank_cd, when the chunk appeared in the lexical list. */
+  lexicalScore?: number;
+  rrfScore: number;
+  /** Survived top-K selection (part of the fused result). */
+  retained: boolean;
+}
+
+/** Optional collector passed to retrieve()/retrieveAcross(); filled only when provided. */
+export interface RetrievalDebugCollector {
+  candidates?: RrfCandidateMeta[];
+}
+
+interface FusedEntry {
+  row: CandidateRow;
+  rrf: number;
+  denseScore?: number;
+  lexicalScore?: number;
+}
+
+/** Shared fusion core: fused entries sorted by RRF score, descending. */
+function fuse(lists: CandidateRow[][], k: number): FusedEntry[] {
+  const fused = new Map<string, FusedEntry>();
+  lists.forEach((list, listIdx) => {
+    list.forEach((row, i) => {
+      const entry = fused.get(row.id) ?? { row, rrf: 0 };
+      entry.rrf += 1 / (k + i + 1);
+      // Dense list is always first; later lists are lexical.
+      if (listIdx === 0) {
+        entry.denseScore = Number(row.score);
+      } else if (entry.lexicalScore === undefined) {
+        entry.lexicalScore = Number(row.score);
+      }
+      fused.set(row.id, entry);
+    });
+  });
+  return Array.from(fused.values()).sort((a, b) => b.rrf - a.rrf);
+}
+
+/** Reported score: dense cosine when available (interpretable), else ts_rank. */
+function toResultDto(e: FusedEntry): RetrievalResultDto {
+  return {
+    chunkId: e.row.id,
+    content: e.row.content,
+    chunkIndex: Number(e.row.chunk_index),
+    documentId: e.row.document_id,
+    score: e.denseScore ?? e.lexicalScore ?? 0,
+    pageStart: e.row.page_start === null ? null : Number(e.row.page_start),
+    pageEnd: e.row.page_end === null ? null : Number(e.row.page_end),
+  };
+}
+
 /**
  * Reciprocal Rank Fusion over ranked candidate lists (k=60).
  * score(d) = Σ 1/(k + rank_i(d)) over every list containing d (1-based rank).
@@ -53,37 +110,30 @@ export function rrfFuse(
   topK: number,
   k: number = RRF_K,
 ): RetrievalResultDto[] {
-  const fused = new Map<
-    string,
-    { row: CandidateRow; rrf: number; reportedScore: number | null }
-  >();
-  lists.forEach((list, listIdx) => {
-    list.forEach((row, i) => {
-      const entry = fused.get(row.id) ?? {
-        row,
-        rrf: 0,
-        reportedScore: null,
-      };
-      entry.rrf += 1 / (k + i + 1);
-      // Dense list is always first: prefer its cosine similarity for display.
-      if (listIdx === 0 || entry.reportedScore === null) {
-        entry.reportedScore = Number(row.score);
-      }
-      fused.set(row.id, entry);
-    });
-  });
-  return Array.from(fused.values())
-    .sort((a, b) => b.rrf - a.rrf)
-    .slice(0, topK)
-    .map(({ row, reportedScore }) => ({
-      chunkId: row.id,
-      content: row.content,
-      chunkIndex: Number(row.chunk_index),
-      documentId: row.document_id,
-      score: reportedScore ?? 0,
-      pageStart: row.page_start === null ? null : Number(row.page_start),
-      pageEnd: row.page_end === null ? null : Number(row.page_end),
-    }));
+  return fuse(lists, k).slice(0, topK).map(toResultDto);
+}
+
+/**
+ * Debug variant of rrfFuse: same results, plus per-candidate fusion metadata
+ * (per-list scores, RRF score, retained flag) for the full candidate pool.
+ * Candidates are RRF-desc sorted, so the first `retained` entries line up
+ * 1:1 with the returned results array.
+ */
+export function rrfFuseDebug(
+  lists: CandidateRow[][],
+  topK: number,
+  k: number = RRF_K,
+): { results: RetrievalResultDto[]; candidates: RrfCandidateMeta[] } {
+  const entries = fuse(lists, k);
+  const candidates: RrfCandidateMeta[] = entries.map((e, i) => ({
+    chunkIndex: Number(e.row.chunk_index),
+    documentId: e.row.document_id,
+    ...(e.denseScore !== undefined ? { denseScore: e.denseScore } : {}),
+    ...(e.lexicalScore !== undefined ? { lexicalScore: e.lexicalScore } : {}),
+    rrfScore: e.rrf,
+    retained: i < topK,
+  }));
+  return { results: entries.slice(0, topK).map(toResultDto), candidates };
 }
 
 /**
@@ -106,8 +156,14 @@ export class RetrievalService {
    * - If document does not exist or user does not own it → return [].
    * - If document status !== DONE → throw 400.
    * - If dense returns nothing, falls back to chunk order (unchanged).
+   *
+   * Pass a debugCollector to receive per-candidate fusion metadata; without
+   * one, no debug bookkeeping happens.
    */
-  async retrieve(input: RetrievalInput): Promise<RetrievalResultDto[]> {
+  async retrieve(
+    input: RetrievalInput,
+    debugCollector?: RetrievalDebugCollector,
+  ): Promise<RetrievalResultDto[]> {
     const { userId, documentId, query, topK = DEFAULT_TOP_K } = input;
     const k = Math.min(Math.max(1, topK), MAX_TOP_K);
     const trimmedQuery = query?.trim() ?? '';
@@ -143,6 +199,26 @@ export class RetrievalService {
       this.runLexicalRetrieval([documentId], trimmedQuery),
     ]);
 
+    return this.fuseWithOptionalDebug(
+      denseRows,
+      lexicalRows,
+      k,
+      debugCollector,
+    );
+  }
+
+  /** Fuse candidate lists, filling the debug collector only when one is passed. */
+  private fuseWithOptionalDebug(
+    denseRows: CandidateRow[],
+    lexicalRows: CandidateRow[],
+    k: number,
+    debugCollector?: RetrievalDebugCollector,
+  ): RetrievalResultDto[] {
+    if (debugCollector) {
+      const { results, candidates } = rrfFuseDebug([denseRows, lexicalRows], k);
+      debugCollector.candidates = candidates;
+      return results;
+    }
     return rrfFuse([denseRows, lexicalRows], k);
   }
 
@@ -154,6 +230,7 @@ export class RetrievalService {
    */
   async retrieveAcross(
     input: CrossRetrievalInput,
+    debugCollector?: RetrievalDebugCollector,
   ): Promise<RetrievalResultDto[]> {
     const { userId, documentIds, query, topK = DEFAULT_TOP_K } = input;
     const k = Math.min(Math.max(1, topK), MAX_TOP_K);
@@ -182,7 +259,12 @@ export class RetrievalService {
       this.runLexicalRetrieval(ids, trimmedQuery),
     ]);
 
-    return rrfFuse([denseRows, lexicalRows], k);
+    return this.fuseWithOptionalDebug(
+      denseRows,
+      lexicalRows,
+      k,
+      debugCollector,
+    );
   }
 
   /**

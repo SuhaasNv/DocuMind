@@ -117,6 +117,7 @@ export class CollectionsController {
       collection: target,
       question: dto.question,
       history: dto.history,
+      debug: dto.debug,
     });
   }
 
@@ -156,6 +157,7 @@ export class CollectionsController {
           collection: target,
           question: dto.question,
           history: dto.history,
+          debug: dto.debug,
         },
         ac.signal,
       )) {

@@ -1,5 +1,6 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
+import type { RetrievalDebug } from '@/lib/sseChat';
 
 export type DocumentStatus = 'PENDING' | 'PROCESSING' | 'DONE' | 'FAILED';
 
@@ -42,6 +43,8 @@ export interface Message {
   sources?: ChatSource[];
   /** Follow-up question chips parsed from the answer's FOLLOWUPS line. */
   followUps?: string[];
+  /** Retrieval transparency payload (present when the debug preference was on). */
+  debug?: RetrievalDebug;
 }
 
 export interface CollectionSummary {
@@ -111,6 +114,7 @@ interface AppState {
   setStreaming: (documentId: string, messageId: string, isStreaming: boolean) => void;
   setMessageSources: (documentId: string, messageId: string, sources: ChatSource[]) => void;
   setMessageFollowUps: (documentId: string, messageId: string, followUps: string[]) => void;
+  setMessageDebug: (documentId: string, messageId: string, debug: RetrievalDebug) => void;
   setMessageError: (documentId: string, messageId: string) => void;
   clearConversation: (documentId: string) => void;
   removeLastMessages: (documentId: string, count: number) => void;
@@ -307,6 +311,23 @@ export const useAppStore = create<AppState>()(
               ...conversation,
               messages: conversation.messages.map((msg) =>
                 msg.id === messageId ? { ...msg, followUps } : msg
+              ),
+            },
+          },
+        };
+      }),
+
+      setMessageDebug: (documentId, messageId, debug) => set((state) => {
+        const conversation = state.conversations[documentId];
+        if (!conversation) return state;
+
+        return {
+          conversations: {
+            ...state.conversations,
+            [documentId]: {
+              ...conversation,
+              messages: conversation.messages.map((msg) =>
+                msg.id === messageId ? { ...msg, debug } : msg
               ),
             },
           },
