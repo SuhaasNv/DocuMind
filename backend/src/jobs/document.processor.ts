@@ -79,9 +79,16 @@ export class DocumentProcessor extends WorkerHost {
       const text = textResult?.text ?? '';
       await parser.destroy();
 
-      const textChunks = chunkText(text, { chunkSize: 900, overlap: 100 });
+      const textChunks = chunkText(text);
       if (textChunks.length === 0) {
-        textChunks.push({ content: '', index: 0 });
+        // No extractable text (e.g. scanned PDF): finish with zero chunks;
+        // chat handles the empty-retrieval case with its own message.
+        this.logger.warn(`Document ${documentId} has no extractable text`);
+        await this.updateProgress(documentId, document.userId, {
+          status: DocumentStatus.DONE,
+          progress: 100,
+        });
+        return;
       }
 
       const okChunk = await this.updateProgress(documentId, document.userId, {
