@@ -71,11 +71,7 @@ async function bootstrap() {
     methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
     allowedHeaders: ['Content-Type', 'Authorization'],
   });
-  console.log(
-    '[CORS] Allowed origins:',
-    [...allowedSet],
-    '+ *.railway.app',
-  );
+  console.log('[CORS] Allowed origins:', [...allowedSet], '+ *.railway.app');
 
   app.enableShutdownHooks();
 

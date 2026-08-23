@@ -32,6 +32,7 @@ export interface RagChatInput {
 /** Stream event: delta (token) or done (sources). Transport-agnostic; consumed by SSE or other transports. */
 export type RagStreamEvent =
   | { type: 'delta'; data: string }
+  | { type: 'error'; data: { message: string } }
   | { type: 'done'; data: { sources: ChatSourceDto[]; cached?: boolean } };
 
 /**
@@ -302,11 +303,20 @@ export class RagOrchestratorService {
       }
     } catch (err) {
       errored = true;
-      if (!signal?.aborted && !tokenYielded) {
-        const message = err instanceof Error ? err.message : 'unknown error';
+      if (!signal?.aborted) {
+        // Log the real provider error; send a generic one to the client.
+        // Mid-stream failures previously truncated the answer silently.
+        this.logger.error(
+          `LLM stream failed for doc=${documentId} after ${fullAnswer.length} chars`,
+          err instanceof Error ? err.message : err,
+        );
         yield {
-          type: 'delta',
-          data: `Sorry, the answer could not be generated (${message}).`,
+          type: 'error',
+          data: {
+            message: tokenYielded
+              ? 'The answer was interrupted by a provider error.'
+              : 'The answer could not be generated. Please try again.',
+          },
         };
       }
     } finally {

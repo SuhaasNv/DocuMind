@@ -10,6 +10,9 @@ import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip
 
 const TYPING_MS_PER_CHAR = 22;
 const TYPING_CHARS_PER_TICK = 2;
+/** Catch-up: reveal at least backlog/15 chars per tick so display speed is
+ * never slower than the network stream (was hard-capped at ~91 chars/s). */
+const TYPING_CATCHUP_DIVISOR = 15;
 
 interface MessageBubbleProps {
   message: Message;
@@ -69,7 +72,11 @@ const MessageBubble = memo(function MessageBubble({ message, onRegenerate }: Mes
     const tick = () => {
       setVisibleLength((prev) => {
         const len = contentLengthRef.current;
-        const next = Math.min(prev + TYPING_CHARS_PER_TICK, len);
+        const step = Math.max(
+          TYPING_CHARS_PER_TICK,
+          Math.ceil((len - prev) / TYPING_CATCHUP_DIVISOR),
+        );
+        const next = Math.min(prev + step, len);
         if (next >= len && typewriterIntervalRef.current) {
           clearInterval(typewriterIntervalRef.current);
           typewriterIntervalRef.current = null;

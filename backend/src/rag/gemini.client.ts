@@ -42,26 +42,18 @@ export class GeminiClient {
       );
     }
 
-    let stream: Awaited<
-      ReturnType<typeof this.ai.models.generateContentStream>
-    >;
-    try {
-      stream = await this.ai.models.generateContentStream({
-        model: this.model,
-        contents: prompt,
-        config: {
-          abortSignal: signal,
-        },
-      });
-    } catch (err) {
-      const msg =
-        err instanceof Error ? err.message : 'Unknown error calling Gemini';
-      yield `Error calling Gemini: ${msg}. Check GEMINI_API_KEY and quota.`;
-      throw err;
-    }
+    // Errors propagate to the orchestrator, which logs details and emits a
+    // generic error event — raw provider errors are never streamed to clients.
+    const stream = await this.ai.models.generateContentStream({
+      model: this.model,
+      contents: prompt,
+      config: {
+        abortSignal: signal,
+      },
+    });
 
     let yieldedAny = false;
-    try {
+    {
       for await (const chunk of stream) {
         if (signal?.aborted) break;
         const text =
@@ -79,13 +71,6 @@ export class GeminiClient {
           yieldedAny = true;
         }
       }
-    } catch (err) {
-      if (!yieldedAny) {
-        const msg =
-          err instanceof Error ? err.message : 'Unknown error from Gemini';
-        yield `Error from Gemini: ${msg}. Check API key and quota.`;
-      }
-      throw err;
     }
     if (!yieldedAny) {
       yield 'The model did not return any text. It may have been blocked or the response may be empty.';

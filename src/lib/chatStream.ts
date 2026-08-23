@@ -76,6 +76,24 @@ export async function sendChatMessage(documentId: string, content: string): Prom
   let fullContent = '';
   let idleTimer: ReturnType<typeof setTimeout> | null = null;
 
+  // Batch delta -> store updates into a ~50ms flush instead of one state
+  // update (and one re-render) per token.
+  let flushTimer: ReturnType<typeof setTimeout> | null = null;
+  const flushContent = () => {
+    flushTimer = null;
+    useAppStore.getState().updateMessage(documentId, assistantId, fullContent);
+  };
+  const scheduleFlush = () => {
+    if (flushTimer === null) flushTimer = setTimeout(flushContent, 50);
+  };
+  const cancelAndFlush = () => {
+    if (flushTimer !== null) {
+      clearTimeout(flushTimer);
+      flushTimer = null;
+    }
+    useAppStore.getState().updateMessage(documentId, assistantId, fullContent);
+  };
+
   const clearIdleTimer = () => {
     if (idleTimer) {
       clearTimeout(idleTimer);
@@ -88,7 +106,8 @@ export async function sendChatMessage(documentId: string, content: string): Prom
       idleTimer = null;
       controller.abort();
       const s = useAppStore.getState();
-      s.updateMessage(documentId, assistantId, fullContent || 'Request timed out. Please try again.');
+      fullContent = fullContent || 'Request timed out. Please try again.';
+      cancelAndFlush();
       s.setStreaming(documentId, assistantId, false);
       if (!fullContent) s.setMessageError(documentId, assistantId);
     }, SSE_IDLE_TIMEOUT_MS);
@@ -104,11 +123,12 @@ export async function sendChatMessage(documentId: string, content: string): Prom
           if (signal.aborted) return;
           resetIdleTimer();
           fullContent += chunk;
-          useAppStore.getState().updateMessage(documentId, assistantId, fullContent);
+          scheduleFlush();
         },
         onDone: (sources) => {
           clearIdleTimer();
           if (signal.aborted) return;
+          cancelAndFlush();
           const s = useAppStore.getState();
           s.setStreaming(documentId, assistantId, false);
           if (sources.length > 0) s.setMessageSources(documentId, assistantId, sources);
@@ -116,8 +136,12 @@ export async function sendChatMessage(documentId: string, content: string): Prom
         onError: (message) => {
           clearIdleTimer();
           if (signal.aborted) return;
+          // Mid-stream error: keep the partial answer, append the error note.
+          fullContent = fullContent.length > 0
+            ? `${fullContent}\n\n_${message}_`
+            : `Sorry, something went wrong: ${message}`;
+          cancelAndFlush();
           const s = useAppStore.getState();
-          s.updateMessage(documentId, assistantId, `Sorry, something went wrong: ${message}`);
           s.setStreaming(documentId, assistantId, false);
           s.setMessageError(documentId, assistantId);
         },
@@ -131,6 +155,7 @@ export async function sendChatMessage(documentId: string, content: string): Prom
     );
   } finally {
     clearIdleTimer();
+    if (flushTimer !== null) cancelAndFlush();
     if (controllers.get(documentId) === controller) controllers.delete(documentId);
     // If aborted mid-stream (Stop button / logout), leave the partial text but end the streaming state.
     const s = useAppStore.getState();

@@ -83,7 +83,7 @@ export class DocumentsService {
       where: { userId },
       orderBy: { uploadedAt: 'desc' },
     });
-    return documents.map(this.toResponse);
+    return documents.map((d) => this.toResponse(d));
   }
 
   async findOne(id: string, userId: string): Promise<DocumentResponseDto> {

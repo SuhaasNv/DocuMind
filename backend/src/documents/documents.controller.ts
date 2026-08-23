@@ -172,6 +172,8 @@ export class DocumentsController {
         if (ac.signal.aborted || res.writableEnded) break;
         if (event.type === 'delta') {
           res.write(`event: delta\ndata: ${JSON.stringify(event.data)}\n\n`);
+        } else if (event.type === 'error') {
+          res.write(`event: error\ndata: ${JSON.stringify(event.data)}\n\n`);
         } else {
           res.write(`event: done\ndata: ${JSON.stringify(event.data)}\n\n`);
         }
