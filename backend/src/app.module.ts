@@ -6,6 +6,7 @@ import { PrismaModule } from './prisma/prisma.module.js';
 import { HealthModule } from './health/health.module.js';
 import { AuthModule } from './auth/auth.module.js';
 import { DocumentsModule } from './documents/documents.module.js';
+import { CollectionsModule } from './collections/collections.module.js';
 import { JobsModule } from './jobs/jobs.module.js';
 import { EmbeddingModule } from './embedding/embedding.module.js';
 import { ChunksModule } from './chunks/chunks.module.js';
@@ -34,6 +35,7 @@ import { AdminModule } from './admin/admin.module.js';
     ChunksModule,
     JobsModule,
     DocumentsModule,
+    CollectionsModule,
     AdminModule,
   ],
   providers: [

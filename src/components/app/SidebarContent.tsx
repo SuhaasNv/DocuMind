@@ -25,6 +25,7 @@ import {
 import { useAppStore } from '@/stores/useAppStore';
 import { stopAllChatStreams } from '@/lib/chatStream';
 import { getApiBaseUrl } from '@/lib/api';
+import CollectionsSection from '@/components/app/CollectionsSection';
 
 interface SidebarContentProps {
   /** When true, show labels next to icons. When false, icons only (collapsed). */
@@ -219,6 +220,15 @@ const SidebarContent = ({ isExpanded, onLinkClick, isMobileSheet = false, showLo
               })}
             </ul>
           </div>
+        )}
+
+        {/* Collections — hidden on admin panel */}
+        {!isAdminPanel && (
+          <CollectionsSection
+            isExpanded={isExpanded}
+            isMobileSheet={isMobileSheet}
+            onLinkClick={onLinkClick}
+          />
         )}
       </nav>
 

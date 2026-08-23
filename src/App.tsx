@@ -66,6 +66,9 @@ const App = () => (
           <Route path="/chat/:documentId" element={<ProtectedRoute><AppLayout /></ProtectedRoute>}>
             <Route index element={<ChatPage />} />
           </Route>
+          <Route path="/collection/:collectionId/chat" element={<ProtectedRoute><AppLayout /></ProtectedRoute>}>
+            <Route index element={<ChatPage />} />
+          </Route>
 
           {/* Catch-all */}
           <Route path="*" element={<NotFound />} />

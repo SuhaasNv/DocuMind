@@ -1,5 +1,5 @@
 /**
- * SSE chat client for POST /documents/:id/chat/stream.
+ * SSE chat client for the chat stream endpoints.
  * Uses fetch() + ReadableStream (not EventSource) to support POST + Authorization.
  * Auth: prefer Authorization: Bearer <token> (header). Backend also accepts ?token= for proxies that strip headers.
  * Parses event: delta and event: done; ignores keepalive/empty.
@@ -17,6 +17,9 @@ export interface ChatSource {
   pageEnd?: number | null;
   /** ~150-char excerpt for highlight-matching in the PDF viewer. */
   quote?: string;
+  /** Collection chat: which document this source came from. */
+  documentId?: string;
+  documentName?: string;
 }
 
 export interface StreamChatCallbacks {
@@ -48,9 +51,11 @@ export interface StreamChatOptions {
 /**
  * Stream chat: POST with { question }, parse SSE, invoke callbacks.
  * On abort: stops reading and returns without calling onError or throwing.
+ * `streamPath` is the endpoint path (e.g. `/documents/:id/chat/stream` or
+ * `/collections/:id/chat/stream`) — both speak the same SSE protocol.
  */
 export async function streamChat(
-  documentId: string,
+  streamPath: string,
   question: string,
   callbacks: StreamChatCallbacks,
   options: StreamChatOptions
@@ -62,7 +67,7 @@ export async function streamChat(
     return;
   }
 
-  const url = `${baseUrl.replace(/\/$/, '')}/documents/${encodeURIComponent(documentId)}/chat/stream`;
+  const url = `${baseUrl.replace(/\/$/, '')}${streamPath}`;
   let res: Response;
 
   try {

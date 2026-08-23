@@ -33,6 +33,7 @@ model User {
   createdAt    DateTime  @default(now()) @map("created_at")
   updatedAt    DateTime  @updatedAt @map("updated_at")
   documents    Document[]
+  collections  Collection[]
 
   @@map("users")
 }
@@ -51,6 +52,7 @@ model Document {
   updatedAt  DateTime       @updatedAt @map("updated_at")
   user       User           @relation(fields: [userId], references: [id], onDelete: Cascade)
   chunks     DocumentChunk[]
+  collections CollectionDocument[]
 
   @@index([userId])
   @@map("documents")
@@ -79,4 +81,28 @@ model DocumentChunk {
 
   @@index([documentId])
   @@map("document_chunks")
+}
+
+// Phase 9: named groups of a user's documents for cross-document chat.
+model Collection {
+  id        String   @id @default(cuid())
+  userId    String   @map("user_id")
+  name      String   @db.VarChar(120)
+  createdAt DateTime @default(now()) @map("created_at")
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  documents CollectionDocument[]
+
+  @@index([userId])
+  @@map("collections")
+}
+
+model CollectionDocument {
+  collectionId String     @map("collection_id")
+  documentId   String     @map("document_id")
+  collection   Collection @relation(fields: [collectionId], references: [id], onDelete: Cascade)
+  document     Document   @relation(fields: [documentId], references: [id], onDelete: Cascade)
+
+  @@id([collectionId, documentId])
+  @@index([documentId])
+  @@map("collection_documents")
 }

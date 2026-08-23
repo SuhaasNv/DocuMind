@@ -4,6 +4,7 @@ interface Row {
   id: string;
   content: string;
   chunk_index: number;
+  document_id: string;
   score: number;
   page_start: number | null;
   page_end: number | null;
@@ -13,6 +14,7 @@ const row = (id: string, score: number, idx = 0): Row => ({
   id,
   content: `content-${id}`,
   chunk_index: idx,
+  document_id: 'doc-1',
   score,
   page_start: 2,
   page_end: 3,
@@ -62,6 +64,7 @@ describe('rrfFuse (Reciprocal Rank Fusion, k=60)', () => {
       chunkId: 'a',
       content: 'content-a',
       chunkIndex: 7,
+      documentId: 'doc-1',
       score: 0.5,
       pageStart: 2,
       pageEnd: 3,

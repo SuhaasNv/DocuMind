@@ -11,6 +11,6 @@ import { ChunksModule } from '../chunks/chunks.module.js';
   imports: [RagModule, JobsModule, ChunksModule],
   controllers: [DocumentsController],
   providers: [DocumentsService, RetrievalService, RagOrchestratorService],
-  exports: [DocumentsService, RetrievalService],
+  exports: [DocumentsService, RetrievalService, RagOrchestratorService],
 })
 export class DocumentsModule {}

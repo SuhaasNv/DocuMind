@@ -27,6 +27,9 @@ export interface ChatSource {
   pageEnd?: number | null;
   /** ~150-char excerpt for highlight-matching in the PDF viewer. */
   quote?: string;
+  /** Collection chat: which document this source came from. */
+  documentId?: string;
+  documentName?: string;
 }
 
 export interface Message {
@@ -39,6 +42,14 @@ export interface Message {
   sources?: ChatSource[];
   /** Follow-up question chips parsed from the answer's FOLLOWUPS line. */
   followUps?: string[];
+}
+
+export interface CollectionSummary {
+  id: string;
+  name: string;
+  createdAt: Date;
+  documentCount: number;
+  documents: { id: string; name: string; status: DocumentStatus }[];
 }
 
 export interface Conversation {
@@ -65,6 +76,12 @@ interface AppState {
   // Documents state
   documents: Document[];
   selectedDocumentId: string | null;
+
+  // Collections state (loaded from backend; not persisted)
+  collections: CollectionSummary[];
+  setCollections: (collections: CollectionSummary[]) => void;
+  upsertCollection: (collection: CollectionSummary) => void;
+  removeCollection: (id: string) => void;
 
   // Chat state
   conversations: Record<string, Conversation>;
@@ -115,6 +132,19 @@ export const useAppStore = create<AppState>()(
       accessToken: null,
       documents: [],
       selectedDocumentId: null,
+      collections: [],
+      setCollections: (collections) => set({ collections }),
+      upsertCollection: (collection) => set((state) => ({
+        collections: state.collections.some((c) => c.id === collection.id)
+          ? state.collections.map((c) => (c.id === collection.id ? collection : c))
+          : [collection, ...state.collections],
+      })),
+      removeCollection: (id) => set((state) => ({
+        collections: state.collections.filter((c) => c.id !== id),
+        conversations: Object.fromEntries(
+          Object.entries(state.conversations).filter(([key]) => key !== `col:${id}`)
+        ),
+      })),
       conversations: {},
       currentConversationId: null,
       isSidebarOpen: true,

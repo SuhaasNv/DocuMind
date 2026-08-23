@@ -29,6 +29,7 @@ import {
 import { useAppStore } from '@/stores/useAppStore';
 import { stopAllChatStreams } from '@/lib/chatStream';
 import { getApiBaseUrl } from '@/lib/api';
+import CollectionsSection from '@/components/app/CollectionsSection';
 
 const Sidebar = () => {
   const location = useLocation();
@@ -258,6 +259,9 @@ const Sidebar = () => {
             </ul>
           </div>
         )}
+
+        {/* Collections — hidden on admin panel */}
+        {!isAdminPanel && <CollectionsSection isExpanded={isSidebarOpen} />}
       </nav>
 
       {/* Delete confirmation */}

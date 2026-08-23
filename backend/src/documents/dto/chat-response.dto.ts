@@ -10,6 +10,10 @@ export interface ChatSourceDto {
   pageEnd: number | null;
   /** First ~150 chars of the chunk, for highlight-matching in the PDF viewer. */
   quote: string;
+  /** Set for collection (cross-document) chat: which document this source came from. */
+  documentId?: string;
+  /** Set for collection chat: display name of the source document. */
+  documentName?: string;
 }
 
 export interface ChatResponseDto {

@@ -10,8 +10,8 @@ function makeService(env: Record<string, string> = {}): PromptService {
 }
 
 const CHUNKS = [
-  { content: 'Alpha facts about the project.', chunkIndex: 0, score: 0.9 },
-  { content: 'Beta details and numbers.', chunkIndex: 1, score: 0.5 },
+  { content: 'Alpha facts about the project.', score: 0.9 },
+  { content: 'Beta details and numbers.', score: 0.5 },
 ];
 
 describe('PromptService.buildRagMessages', () => {
@@ -20,7 +20,7 @@ describe('PromptService.buildRagMessages', () => {
       { role: 'user', content: 'What is the codename?' },
       { role: 'assistant', content: 'It is AURORA-7.' },
     ];
-    const { messages, includedChunkIndices } = makeService().buildRagMessages(
+    const { messages, includedPositions } = makeService().buildRagMessages(
       CHUNKS,
       'Can you elaborate?',
       history,
@@ -41,7 +41,7 @@ describe('PromptService.buildRagMessages', () => {
       role: 'user',
       content: 'Can you elaborate?',
     });
-    expect(includedChunkIndices).toEqual([0, 1]);
+    expect(includedPositions).toEqual([0, 1]);
   });
 
   it('works with no history: system then question only', () => {
@@ -68,13 +68,12 @@ describe('PromptService.buildRagMessages', () => {
   it('respects the context cap: stops adding chunks past MAX_CONTEXT_CHARS', () => {
     const big = Array.from({ length: 10 }, (_, i) => ({
       content: 'x'.repeat(500),
-      chunkIndex: i,
       score: 0.9 - i * 0.05,
     }));
-    const { includedChunkIndices } = makeService({
+    const { includedPositions } = makeService({
       MAX_CONTEXT_CHARS: '1200',
     }).buildRagMessages(big, 'Q?');
-    expect(includedChunkIndices.length).toBeGreaterThan(0);
-    expect(includedChunkIndices.length).toBeLessThan(10);
+    expect(includedPositions.length).toBeGreaterThan(0);
+    expect(includedPositions.length).toBeLessThan(10);
   });
 });

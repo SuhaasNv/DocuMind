@@ -11,6 +11,7 @@ import type {
   ChatResponseDto,
   ChatSourceDto,
 } from './dto/chat-response.dto.js';
+import type { RetrievalResultDto } from './dto/retrieval-response.dto.js';
 
 const NO_INFO_ANSWER = "I don't have enough information to answer that.";
 /** When retrieval returns no chunks (document not indexed or no rows). */
@@ -23,7 +24,17 @@ const DEFAULT_TOP_K = 4;
 
 export interface RagChatInput {
   userId: string;
-  documentId: string;
+  /** Single-document chat target (mutually exclusive with collection). */
+  documentId?: string;
+  /**
+   * Collection (cross-document) chat target. `scope` is the cache scope key
+   * (collectionId + membership hash) and `documents` are the DONE member
+   * documents, already ownership-checked by the caller.
+   */
+  collection?: {
+    scope: string;
+    documents: Array<{ id: string; name: string }>;
+  };
   question: string;
   topK?: number;
   /** Recent conversation turns, oldest first (token-capped downstream). */
@@ -77,19 +88,15 @@ export class RagOrchestratorService {
   }
 
   private async checkCache(
-    documentId: string,
+    scope: string,
     settingsKey: string,
     question: string,
     t0: number,
   ): Promise<{ hit: ChatResponseDto | null; queryEmbedding: number[] }> {
-    const exact = await this.chatCache.getExact(
-      documentId,
-      settingsKey,
-      question,
-    );
+    const exact = await this.chatCache.getExact(scope, settingsKey, question);
     if (exact) {
       this.logger.log(
-        `[chat-cache] exact hit doc=${documentId} in ${Math.round(performance.now() - t0)}ms`,
+        `[chat-cache] exact hit scope=${scope} in ${Math.round(performance.now() - t0)}ms`,
       );
       return { hit: { ...exact, cached: true }, queryEmbedding: [] };
     }
@@ -99,18 +106,49 @@ export class RagOrchestratorService {
       void this.chatCache.storeQueryEmbedding(question, queryEmbedding);
     }
     const semantic = await this.chatCache.getSemantic(
-      documentId,
+      scope,
       settingsKey,
       queryEmbedding,
     );
     if (semantic) {
       this.logger.log(
-        `[chat-cache] semantic hit doc=${documentId} sim=${semantic.similarity.toFixed(4)} in ${Math.round(performance.now() - t0)}ms`,
+        `[chat-cache] semantic hit scope=${scope} sim=${semantic.similarity.toFixed(4)} in ${Math.round(performance.now() - t0)}ms`,
       );
       return { hit: { ...semantic.hit, cached: true }, queryEmbedding };
     }
-    this.logger.log(`[chat-cache] miss doc=${documentId}`);
+    this.logger.log(`[chat-cache] miss scope=${scope}`);
     return { hit: null, queryEmbedding };
+  }
+
+  /** Cache scope: the collection scope key for collection chat, else the document id. */
+  private cacheScopeOf(input: RagChatInput): string {
+    return input.collection?.scope ?? input.documentId ?? '';
+  }
+
+  /** Route retrieval to the single- or cross-document variant. */
+  private retrieveFor(
+    input: RagChatInput,
+    question: string,
+    topK: number,
+    queryEmbedding: number[],
+  ): Promise<RetrievalResultDto[]> {
+    if (input.collection) {
+      return this.retrievalService.retrieveAcross({
+        userId: input.userId,
+        documentIds: input.collection.documents.map((d) => d.id),
+        query: question,
+        topK,
+        queryEmbedding,
+      });
+    }
+    if (!input.documentId) return Promise.resolve([]);
+    return this.retrievalService.retrieve({
+      userId: input.userId,
+      documentId: input.documentId,
+      query: question,
+      topK,
+      queryEmbedding,
+    });
   }
 
   /**
@@ -118,16 +156,17 @@ export class RagOrchestratorService {
    * If no chunks are returned, responds with the fallback message and empty sources.
    */
   async chat(input: RagChatInput): Promise<ChatResponseDto> {
-    const { userId, documentId, question, topK = DEFAULT_TOP_K } = input;
+    const { question, topK = DEFAULT_TOP_K } = input;
     const history = input.history ?? [];
     const trimmedQuestion = question?.trim() ?? '';
     if (!trimmedQuestion) {
       return { answer: NO_INFO_ANSWER, sources: [] };
     }
 
+    const scope = this.cacheScopeOf(input);
     const settingsKey = this.settingsKeyFor(topK, history);
     const cache = await this.checkCache(
-      documentId,
+      scope,
       settingsKey,
       trimmedQuestion,
       performance.now(),
@@ -135,13 +174,12 @@ export class RagOrchestratorService {
     if (cache.hit) return cache.hit;
 
     const t0Retrieval = performance.now();
-    const chunks = await this.retrievalService.retrieve({
-      userId,
-      documentId,
-      query: trimmedQuestion,
+    const chunks = await this.retrieveFor(
+      input,
+      trimmedQuestion,
       topK,
-      queryEmbedding: cache.queryEmbedding,
-    });
+      cache.queryEmbedding,
+    );
     const retrievalMs = performance.now() - t0Retrieval;
 
     if (!chunks.length) {
@@ -154,16 +192,11 @@ export class RagOrchestratorService {
     }
 
     const t0Prompt = performance.now();
-    const { messages, includedChunkIndices } =
-      this.promptService.buildRagMessages(
-        chunks.map((c) => ({
-          content: c.content,
-          chunkIndex: c.chunkIndex,
-          score: c.score,
-        })),
-        trimmedQuestion,
-        history,
-      );
+    const { messages, includedPositions } = this.promptService.buildRagMessages(
+      chunks.map((c) => ({ content: c.content, score: c.score })),
+      trimmedQuestion,
+      history,
+    );
     const promptBuildMs = performance.now() - t0Prompt;
 
     const raw = await this.llmService.completeMessages(messages);
@@ -171,10 +204,10 @@ export class RagOrchestratorService {
 
     logRagLatency({ retrievalMs, promptBuildMs });
 
-    const sources = this.buildSources(chunks, includedChunkIndices);
+    const sources = this.buildSources(input, chunks, includedPositions);
 
     void this.chatCache.store(
-      documentId,
+      scope,
       settingsKey,
       trimmedQuestion,
       cache.queryEmbedding,
@@ -191,23 +224,22 @@ export class RagOrchestratorService {
 
   /**
    * Marker contract: sources are numbered 1..n in prompt-inclusion order
-   * (includedChunkIndices, assigned AFTER context trimming), matching the
+   * (includedPositions, assigned AFTER context trimming), matching the
    * [n] labels the model was shown — so [1] in the answer is sources[0].
+   * Positions index the retrieval results array directly, so chunkIndex
+   * collisions across documents (collection chat) cannot mis-map a source.
    */
   private buildSources(
-    chunks: Array<{
-      chunkIndex: number;
-      content: string;
-      score: number;
-      pageStart: number | null;
-      pageEnd: number | null;
-    }>,
-    includedChunkIndices: number[],
+    input: RagChatInput,
+    chunks: RetrievalResultDto[],
+    includedPositions: number[],
   ): ChatSourceDto[] {
-    const chunkByIndex = new Map(chunks.map((c) => [c.chunkIndex, c]));
-    return includedChunkIndices
-      .map((idx) => chunkByIndex.get(idx))
-      .filter((c): c is NonNullable<typeof c> => c != null)
+    const nameById = new Map(
+      input.collection?.documents.map((d) => [d.id, d.name]) ?? [],
+    );
+    return includedPositions
+      .map((pos) => chunks[pos])
+      .filter((c): c is RetrievalResultDto => c != null)
       .map((c, i) => ({
         marker: i + 1,
         chunkIndex: c.chunkIndex,
@@ -216,6 +248,12 @@ export class RagOrchestratorService {
         pageStart: c.pageStart,
         pageEnd: c.pageEnd,
         quote: c.content.replace(/\s+/g, ' ').trim().slice(0, 150),
+        ...(input.collection
+          ? {
+              documentId: c.documentId,
+              documentName: nameById.get(c.documentId),
+            }
+          : {}),
       }));
   }
 
@@ -243,7 +281,7 @@ export class RagOrchestratorService {
     input: RagChatInput,
     signal?: AbortSignal,
   ): AsyncGenerator<RagStreamEvent, void, undefined> {
-    const { userId, documentId, question, topK = DEFAULT_TOP_K } = input;
+    const { question, topK = DEFAULT_TOP_K } = input;
     const history = input.history ?? [];
     const trimmedQuestion = question?.trim() ?? '';
 
@@ -253,9 +291,10 @@ export class RagOrchestratorService {
       return;
     }
 
+    const scope = this.cacheScopeOf(input);
     const settingsKey = this.settingsKeyFor(topK, history);
     const cache = await this.checkCache(
-      documentId,
+      scope,
       settingsKey,
       trimmedQuestion,
       performance.now(),
@@ -287,13 +326,12 @@ export class RagOrchestratorService {
     }
 
     const t0Retrieval = performance.now();
-    const chunks = await this.retrievalService.retrieve({
-      userId,
-      documentId,
-      query: trimmedQuestion,
+    const chunks = await this.retrieveFor(
+      input,
+      trimmedQuestion,
       topK,
-      queryEmbedding: cache.queryEmbedding,
-    });
+      cache.queryEmbedding,
+    );
     const retrievalMs = performance.now() - t0Retrieval;
 
     if (!chunks.length) {
@@ -310,16 +348,11 @@ export class RagOrchestratorService {
     }
 
     const t0Prompt = performance.now();
-    const { messages, includedChunkIndices } =
-      this.promptService.buildRagMessages(
-        chunks.map((c) => ({
-          content: c.content,
-          chunkIndex: c.chunkIndex,
-          score: c.score,
-        })),
-        trimmedQuestion,
-        history,
-      );
+    const { messages, includedPositions } = this.promptService.buildRagMessages(
+      chunks.map((c) => ({ content: c.content, score: c.score })),
+      trimmedQuestion,
+      history,
+    );
     const promptBuildMs = performance.now() - t0Prompt;
 
     let llmFirstTokenMs: number | undefined;
@@ -349,7 +382,7 @@ export class RagOrchestratorService {
         // Log the real provider error; send a generic one to the client.
         // Mid-stream failures previously truncated the answer silently.
         this.logger.error(
-          `LLM stream failed for doc=${documentId} after ${fullAnswer.length} chars`,
+          `LLM stream failed for scope=${scope} after ${fullAnswer.length} chars`,
           err instanceof Error ? err.message : err,
         );
         yield {
@@ -364,7 +397,7 @@ export class RagOrchestratorService {
     } finally {
       // Always send 'done' so the frontend can exit streaming state (stops blinking cursor).
       // If the LLM stream errors or is aborted, we still yield done with the sources we have.
-      const sources = this.buildSources(chunks, includedChunkIndices);
+      const sources = this.buildSources(input, chunks, includedPositions);
       logRagLatency({ retrievalMs, promptBuildMs, llmFirstTokenMs });
       // Strip the FOLLOWUPS line BEFORE caching so replays serve the display
       // answer; followUps are stored separately so replays keep the chips.
@@ -374,7 +407,7 @@ export class RagOrchestratorService {
         : { display: '', followUps: [] };
       if (completed && display.length > 0) {
         void this.chatCache.store(
-          documentId,
+          scope,
           settingsKey,
           trimmedQuestion,
           cache.queryEmbedding,

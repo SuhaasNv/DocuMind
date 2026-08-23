@@ -49,14 +49,19 @@ const SIMILAR_SCORE_CONTEXT_RATIO = 0.6;
 
 export interface ContextChunk {
   content: string;
-  chunkIndex: number;
   /** Optional score for dynamic context cap when chunks are highly similar. */
   score?: number;
 }
 
 export interface RagMessagesResult {
   messages: ChatMessage[];
-  includedChunkIndices: number[];
+  /**
+   * Positions (indices into the chunks array passed in) of the chunks that
+   * made it into the prompt, in inclusion order — position order matches the
+   * [1],[2],... labels shown to the model. Positions, not chunkIndex values:
+   * chunkIndex collides across documents in cross-document (collection) chat.
+   */
+  includedPositions: number[];
 }
 
 /**
@@ -102,7 +107,7 @@ export class PromptService {
     question: string,
     history: HistoryTurn[] = [],
   ): RagMessagesResult {
-    const { contextBlocks, includedChunkIndices } = this.buildContext(chunks);
+    const { contextBlocks, includedPositions } = this.buildContext(chunks);
 
     const system = `${RAG_RULES}
 
@@ -115,7 +120,7 @@ ${contextBlocks}`;
       messages.push({ role: turn.role, content: turn.content });
     }
     messages.push({ role: 'user', content: question.trim() });
-    return { messages, includedChunkIndices };
+    return { messages, includedPositions };
   }
 
   /** Keep the newest turns whose total tokens fit the history budget. */
@@ -134,22 +139,22 @@ ${contextBlocks}`;
   /** Shared context assembly for both prompt formats. */
   private buildContext(chunks: ContextChunk[]): {
     contextBlocks: string;
-    includedChunkIndices: number[];
+    includedPositions: number[];
   } {
     const effectiveCap = this.getEffectiveContextCap(chunks);
     const blocks: string[] = [];
     let totalChars = 0;
-    const includedChunkIndices: number[] = [];
+    const includedPositions: number[] = [];
 
-    for (const c of chunks) {
-      const trimmed = c.content.trim();
+    for (let pos = 0; pos < chunks.length; pos++) {
+      const trimmed = chunks[pos].content.trim();
       const truncated =
         trimmed.length > this.maxChunkChars
           ? trimmed.slice(0, this.maxChunkChars) + '…'
           : trimmed;
       // Label = 1-based marker, assigned in inclusion order AFTER trimming,
       // so [1] always exists and aligns with the sources payload.
-      const block = `[${includedChunkIndices.length + 1}]\n${truncated}`;
+      const block = `[${includedPositions.length + 1}]\n${truncated}`;
       const blockLen = block.length;
       const separatorLen = blocks.length > 0 ? CONTEXT_SEPARATOR.length : 0;
 
@@ -159,12 +164,12 @@ ${contextBlocks}`;
 
       blocks.push(block);
       totalChars += separatorLen + blockLen;
-      includedChunkIndices.push(c.chunkIndex);
+      includedPositions.push(pos);
     }
 
     return {
       contextBlocks: blocks.join(CONTEXT_SEPARATOR),
-      includedChunkIndices,
+      includedPositions,
     };
   }
 

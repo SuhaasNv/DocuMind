@@ -260,7 +260,7 @@ const MessageBubble = memo(function MessageBubble({ message, onRegenerate, onOpe
                   const cleaned = (src.snippet ?? '').replace(/\s+/g, ' ').trim();
                   return (
                     <button
-                      key={marker}
+                      key={`${src.documentId ?? 'doc'}-${marker}`}
                       type="button"
                       id={`cite-card-${message.id}-${marker}`}
                       onClick={() => onOpenSource?.(src)}
@@ -271,6 +271,11 @@ const MessageBubble = memo(function MessageBubble({ message, onRegenerate, onOpe
                         {marker}
                       </span>
                       <span className="flex-1 min-w-0">
+                        {src.documentName && (
+                          <span className="block truncate text-[10px] font-medium text-foreground/80">
+                            {src.documentName}
+                          </span>
+                        )}
                         <span className="block text-[10px] font-medium text-foreground/70 mb-0.5">
                           {src.pageStart != null
                             ? src.pageStart === src.pageEnd || src.pageEnd == null

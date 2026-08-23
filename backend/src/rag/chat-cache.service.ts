@@ -44,13 +44,15 @@ export function normalizeQuestion(question: string): string {
 /**
  * Two-layer chat cache on Redis.
  *
- * L1 exact: hash(normalized question) + documentId + settings key.
- * L2 semantic: cosine-compare the query embedding against the document's
+ * L1 exact: hash(normalized question) + scope + settings key.
+ * L2 semantic: cosine-compare the query embedding against the scope's
  * cached entries; serve when similarity ≥ CHAT_CACHE_SEMANTIC_THRESHOLD.
  * Query embeddings themselves are cached under their own exact key.
  *
- * Keys are scoped per document AND per answer-affecting settings (topK),
- * indexed in a per-document set so invalidation needs no SCAN.
+ * `scope` is the chat target: a documentId for single-document chat, or a
+ * collection scope key (collectionId + membership hash) for collection chat.
+ * Keys are scoped per target AND per answer-affecting settings (topK),
+ * indexed in a per-scope set so invalidation needs no SCAN.
  */
 @Injectable()
 export class ChatCacheService implements OnModuleDestroy {
@@ -86,15 +88,15 @@ export class ChatCacheService implements OnModuleDestroy {
   }
 
   private entryKey(
-    documentId: string,
+    scope: string,
     settingsKey: string,
     question: string,
   ): string {
-    return `cc2:${documentId}:${settingsKey}:${this.hash(normalizeQuestion(question))}`;
+    return `cc2:${scope}:${settingsKey}:${this.hash(normalizeQuestion(question))}`;
   }
 
-  private indexKey(documentId: string): string {
-    return `cc2:index:${documentId}`;
+  private indexKey(scope: string): string {
+    return `cc2:index:${scope}`;
   }
 
   private qembKey(question: string): string {
@@ -102,13 +104,13 @@ export class ChatCacheService implements OnModuleDestroy {
   }
 
   async getExact(
-    documentId: string,
+    scope: string,
     settingsKey: string,
     question: string,
   ): Promise<CachedChat | null> {
     try {
       const raw = await this.client.get(
-        this.entryKey(documentId, settingsKey, question),
+        this.entryKey(scope, settingsKey, question),
       );
       if (!raw) return null;
       const entry = JSON.parse(raw) as CacheEntry;
@@ -123,14 +125,14 @@ export class ChatCacheService implements OnModuleDestroy {
   }
 
   async getSemantic(
-    documentId: string,
+    scope: string,
     settingsKey: string,
     queryEmbedding: number[],
   ): Promise<{ hit: CachedChat; similarity: number } | null> {
     try {
-      const keys = (
-        await this.client.smembers(this.indexKey(documentId))
-      ).filter((k) => k.startsWith(`cc2:${documentId}:${settingsKey}:`));
+      const keys = (await this.client.smembers(this.indexKey(scope))).filter(
+        (k) => k.startsWith(`cc2:${scope}:${settingsKey}:`),
+      );
       if (keys.length === 0) return null;
       const values = await this.client.mget(
         keys.slice(0, MAX_SEMANTIC_ENTRIES),
@@ -160,7 +162,7 @@ export class ChatCacheService implements OnModuleDestroy {
   }
 
   async store(
-    documentId: string,
+    scope: string,
     settingsKey: string,
     question: string,
     embedding: number[] | null,
@@ -169,7 +171,7 @@ export class ChatCacheService implements OnModuleDestroy {
     followUps: string[] = [],
   ): Promise<void> {
     try {
-      const key = this.entryKey(documentId, settingsKey, question);
+      const key = this.entryKey(scope, settingsKey, question);
       const entry: CacheEntry = {
         question: normalizeQuestion(question),
         answer,
@@ -180,8 +182,8 @@ export class ChatCacheService implements OnModuleDestroy {
       await this.client
         .multi()
         .set(key, JSON.stringify(entry), 'EX', this.ttlSeconds)
-        .sadd(this.indexKey(documentId), key)
-        .expire(this.indexKey(documentId), this.ttlSeconds)
+        .sadd(this.indexKey(scope), key)
+        .expire(this.indexKey(scope), this.ttlSeconds)
         .exec();
     } catch {
       /* best-effort */
@@ -213,15 +215,15 @@ export class ChatCacheService implements OnModuleDestroy {
     }
   }
 
-  /** Drop every cached answer for a document (reprocess or delete). */
-  async invalidateDocument(documentId: string): Promise<void> {
+  /** Drop every cached answer for a scope (reprocess, delete, membership change). */
+  async invalidateScope(scope: string): Promise<void> {
     try {
-      const index = this.indexKey(documentId);
+      const index = this.indexKey(scope);
       const keys = await this.client.smembers(index);
       if (keys.length > 0) await this.client.del(...keys);
       await this.client.del(index);
       this.logger.log(
-        `[chat-cache] invalidated ${keys.length} entries for document ${documentId}`,
+        `[chat-cache] invalidated ${keys.length} entries for scope ${scope}`,
       );
     } catch {
       /* best-effort */

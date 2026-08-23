@@ -8,11 +8,21 @@ import { useAppStore, type Message } from '@/stores/useAppStore';
  * Streams live outside React components and write into the Zustand store,
  * so an in-flight answer keeps generating when the user navigates away
  * from the chat page and is complete when they return.
+ *
+ * The key is the conversation store key: a documentId for document chat, or
+ * `col:<collectionId>` for collection (cross-document) chat.
  */
 
 const controllers = new Map<string, AbortController>();
 
-/** Abort the active stream for one document (Stop button, New chat, regenerate). */
+/** SSE endpoint path for a conversation key (document or collection chat). */
+function streamPathFor(key: string): string {
+  return key.startsWith('col:')
+    ? `/collections/${encodeURIComponent(key.slice(4))}/chat/stream`
+    : `/documents/${encodeURIComponent(key)}/chat/stream`;
+}
+
+/** Abort the active stream for one conversation (Stop button, New chat, regenerate). */
 export function stopChatStream(documentId: string): void {
   controllers.get(documentId)?.abort();
   controllers.delete(documentId);
@@ -123,7 +133,7 @@ export async function sendChatMessage(documentId: string, content: string): Prom
 
   try {
     await streamChat(
-      documentId,
+      streamPathFor(documentId),
       content,
       {
         onDelta: (chunk) => {

@@ -22,10 +22,20 @@ export interface RetrievalInput {
   queryEmbedding?: number[];
 }
 
+export interface CrossRetrievalInput {
+  userId: string;
+  documentIds: string[];
+  query: string;
+  topK?: number;
+  /** Precomputed query embedding (skips the embed call when provided). */
+  queryEmbedding?: number[];
+}
+
 interface CandidateRow {
   id: string;
   content: string;
   chunk_index: number;
+  document_id: string;
   score: number;
   page_start: number | null;
   page_end: number | null;
@@ -69,6 +79,7 @@ export function rrfFuse(
       chunkId: row.id,
       content: row.content,
       chunkIndex: Number(row.chunk_index),
+      documentId: row.document_id,
       score: reportedScore ?? 0,
       pageStart: row.page_start === null ? null : Number(row.page_start),
       pageEnd: row.page_end === null ? null : Number(row.page_end),
@@ -128,8 +139,47 @@ export class RetrievalService {
 
     const denseLimit = Math.min(k * DENSE_OVERFETCH, 50);
     const [denseRows, lexicalRows] = await Promise.all([
-      this.runDenseRetrieval(documentId, queryEmbedding, denseLimit),
-      this.runLexicalRetrieval(documentId, trimmedQuery),
+      this.runDenseRetrieval([documentId], queryEmbedding, denseLimit),
+      this.runLexicalRetrieval([documentId], trimmedQuery),
+    ]);
+
+    return rrfFuse([denseRows, lexicalRows], k);
+  }
+
+  /**
+   * Cross-document variant: hybrid retrieval over several documents at once
+   * (collection chat). Ownership and DONE status are re-verified here, so a
+   * stale or hostile id list can never leak another user's chunks: ids that
+   * are not the caller's DONE documents are silently dropped.
+   */
+  async retrieveAcross(
+    input: CrossRetrievalInput,
+  ): Promise<RetrievalResultDto[]> {
+    const { userId, documentIds, query, topK = DEFAULT_TOP_K } = input;
+    const k = Math.min(Math.max(1, topK), MAX_TOP_K);
+    const trimmedQuery = query?.trim() ?? '';
+    if (!trimmedQuery || documentIds.length === 0) {
+      return [];
+    }
+
+    const [owned, queryEmbedding] = await Promise.all([
+      this.prisma.document.findMany({
+        where: { id: { in: documentIds }, userId, status: DocumentStatus.DONE },
+        select: { id: true },
+      }),
+      input.queryEmbedding
+        ? Promise.resolve(input.queryEmbedding)
+        : this.embeddingService.embed(trimmedQuery),
+    ]);
+    const ids = owned.map((d) => d.id);
+    if (ids.length === 0) {
+      return [];
+    }
+
+    const denseLimit = Math.min(k * DENSE_OVERFETCH, 50);
+    const [denseRows, lexicalRows] = await Promise.all([
+      this.runDenseRetrieval(ids, queryEmbedding, denseLimit),
+      this.runLexicalRetrieval(ids, trimmedQuery),
     ]);
 
     return rrfFuse([denseRows, lexicalRows], k);
@@ -140,40 +190,42 @@ export class RetrievalService {
    * Falls back to chunk order when similarity returns no rows.
    */
   private async runDenseRetrieval(
-    documentId: string,
+    documentIds: string[],
     queryEmbedding: number[],
     limit: number,
   ): Promise<CandidateRow[]> {
     const embeddingStr = `[${queryEmbedding.join(',')}]`;
 
+    // Same ORDER BY embedding <=> $1 pattern as the single-doc query, so the
+    // HNSW index is still used; document_id = ANY(...) is a plain filter.
     let rows = await this.prisma.$queryRawUnsafe<CandidateRow[]>(
-      `SELECT id, content, chunk_index, page_start, page_end,
+      `SELECT id, content, chunk_index, document_id, page_start, page_end,
               (1 - (embedding <=> $1::vector)) AS score
        FROM document_chunks
-       WHERE document_id = $2
+       WHERE document_id = ANY($2::text[])
        ORDER BY embedding <=> $1::vector ASC
        LIMIT $3`,
       embeddingStr,
-      documentId,
+      documentIds,
       limit,
     );
 
     if (rows.length === 0) {
       this.logger.warn(
-        `Retrieval: 0 chunks from similarity for document ${documentId}; trying fallback by order`,
+        `Retrieval: 0 chunks from similarity for document(s) ${documentIds.join(',')}; trying fallback by order`,
       );
       rows = await this.prisma.$queryRawUnsafe<CandidateRow[]>(
-        `SELECT id, content, chunk_index, page_start, page_end, 0.5 AS score
+        `SELECT id, content, chunk_index, document_id, page_start, page_end, 0.5 AS score
          FROM document_chunks
-         WHERE document_id = $1
-         ORDER BY chunk_index ASC
+         WHERE document_id = ANY($1::text[])
+         ORDER BY document_id ASC, chunk_index ASC
          LIMIT $2`,
-        documentId,
+        documentIds,
         limit,
       );
       if (rows.length === 0) {
         this.logger.warn(
-          `Retrieval: 0 chunks for document ${documentId}. Document may not be processed yet. Ensure Redis is running and the upload job completed (check backend logs for "processed successfully").`,
+          `Retrieval: 0 chunks for document(s) ${documentIds.join(',')}. Document may not be processed yet. Ensure Redis is running and the upload job completed (check backend logs for "processed successfully").`,
         );
       }
     }
@@ -187,17 +239,19 @@ export class RetrievalService {
    * tokenization, stemming, and stop words; user input is never interpolated.
    */
   private async runLexicalRetrieval(
-    documentId: string,
+    documentIds: string[],
     query: string,
   ): Promise<CandidateRow[]> {
+    // content_tsv @@ q drives the GIN index exactly as before; the
+    // document_id filter only narrows its results.
     const rows = await this.prisma.$queryRawUnsafe<CandidateRow[]>(
-      `SELECT id, content, chunk_index, page_start, page_end,
+      `SELECT id, content, chunk_index, document_id, page_start, page_end,
               ts_rank_cd(content_tsv, q) AS score
        FROM document_chunks, plainto_tsquery('english', $2) q
-       WHERE document_id = $1 AND content_tsv @@ q
+       WHERE document_id = ANY($1::text[]) AND content_tsv @@ q
        ORDER BY score DESC
        LIMIT $3`,
-      documentId,
+      documentIds,
       query,
       LEXICAL_CAP,
     );

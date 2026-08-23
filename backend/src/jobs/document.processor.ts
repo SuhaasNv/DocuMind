@@ -11,6 +11,7 @@ import { chunkText } from '../lib/chunking.js';
 import { ChatCacheService } from '../rag/chat-cache.service.js';
 import { LlmService } from '../rag/llm.service.js';
 import { DocumentSummaryService } from '../rag/document-summary.service.js';
+import { collectionCacheScope } from '../collections/collections.service.js';
 
 const QUEUE_NAME = 'document-processing';
 
@@ -83,6 +84,32 @@ export class DocumentProcessor extends WorkerHost {
     return out;
   }
 
+  /**
+   * Drop cached collection-chat answers for every collection containing this
+   * document: reprocessing changes chunk content without changing membership,
+   * so the membership-hashed scope alone would keep serving stale answers.
+   */
+  private async invalidateCollectionsContaining(
+    documentId: string,
+  ): Promise<void> {
+    const memberships = await this.prisma.collectionDocument.findMany({
+      where: { documentId },
+      select: { collectionId: true },
+    });
+    for (const { collectionId } of memberships) {
+      const members = await this.prisma.collectionDocument.findMany({
+        where: { collectionId },
+        select: { documentId: true },
+      });
+      await this.chatCache.invalidateScope(
+        collectionCacheScope(
+          collectionId,
+          members.map((m) => m.documentId),
+        ),
+      );
+    }
+  }
+
   async process(job: Job<ProcessDocumentPayload>): Promise<void> {
     const { documentId, userId } = job.data;
 
@@ -100,8 +127,11 @@ export class DocumentProcessor extends WorkerHost {
       return;
     }
 
-    // Chunks are about to change; cached answers for this document are stale.
-    await this.chatCache.invalidateDocument(documentId);
+    // Chunks are about to change; cached answers for this document — and for
+    // any collection containing it (reprocess keeps the membership hash) —
+    // are stale.
+    await this.chatCache.invalidateScope(documentId);
+    await this.invalidateCollectionsContaining(documentId);
 
     const ok = await this.updateProgress(documentId, document.userId, {
       status: DocumentStatus.PROCESSING,

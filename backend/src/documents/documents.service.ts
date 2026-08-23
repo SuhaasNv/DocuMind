@@ -145,7 +145,9 @@ export class DocumentsService {
       throw new ForbiddenException('Access denied');
     }
     await this.prisma.document.delete({ where: { id } });
-    void this.chatCache.invalidateDocument(id);
+    // Collection caches keyed on this doc's membership hash change scope on
+    // delete (member list shrinks), so they miss naturally; TTL reclaims them.
+    void this.chatCache.invalidateScope(id);
 
     if (document.filePath) {
       try {
