@@ -7,9 +7,11 @@ interface PreferencesState {
   autoScrollWhileStreaming: boolean;
   showSourcesUnderAnswers: boolean;
   enableAnimations: boolean;
+  typewriterEffect: boolean;
   setAutoScrollWhileStreaming: (value: boolean) => void;
   setShowSourcesUnderAnswers: (value: boolean) => void;
   setEnableAnimations: (value: boolean) => void;
+  setTypewriterEffect: (value: boolean) => void;
 }
 
 export const usePreferencesStore = create<PreferencesState>()(
@@ -18,6 +20,8 @@ export const usePreferencesStore = create<PreferencesState>()(
       autoScrollWhileStreaming: true,
       showSourcesUnderAnswers: true,
       enableAnimations: true,
+      typewriterEffect: true,
+      setTypewriterEffect: (value) => set({ typewriterEffect: value }),
       setAutoScrollWhileStreaming: (value) => set({ autoScrollWhileStreaming: value }),
       setShowSourcesUnderAnswers: (value) => set({ showSourcesUnderAnswers: value }),
       setEnableAnimations: (value) => set({ enableAnimations: value }),

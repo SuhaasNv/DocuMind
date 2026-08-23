@@ -11,6 +11,7 @@ import {
 } from '@/components/ui/dropdown-menu';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { useAppStore } from '@/stores/useAppStore';
+import { stopAllChatStreams } from '@/lib/chatStream';
 import { useIsMobile } from '@/hooks/use-mobile';
 import { cn } from '@/lib/utils';
 
@@ -28,7 +29,6 @@ const Header = ({ title = 'Documents' }: HeaderProps) => {
     setMobileMenuOpen,
     user,
     setAuthenticated,
-    abortActiveSSE,
     documentSearchQuery,
     setDocumentSearchQuery,
     notifications,
@@ -40,7 +40,7 @@ const Header = ({ title = 'Documents' }: HeaderProps) => {
   const unreadCount = notifications.filter((n) => !n.read).length;
 
   const handleLogout = () => {
-    abortActiveSSE?.();
+    stopAllChatStreams();
     setAuthenticated(false, null, null);
   };
 
@@ -72,11 +72,10 @@ const Header = ({ title = 'Documents' }: HeaderProps) => {
         <h1 className="text-lg sm:text-xl font-semibold truncate">{title}</h1>
       </div>
 
-      {/* Right section */}
-      <div className="flex items-center gap-2 sm:gap-4 shrink-0">
-        {/* Search - hidden on small screens and on admin panel */}
-        {!isAdminPanel && (
-          <div className="hidden lg:flex relative">
+      {/* Center section — search, centered between title and actions */}
+      {!isAdminPanel && (
+        <div className="hidden md:flex flex-1 justify-center px-4 lg:px-8">
+          <div className="relative w-full max-w-md">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground pointer-events-none" />
             <Input
               id="search-docs"
@@ -90,14 +89,15 @@ const Header = ({ title = 'Documents' }: HeaderProps) => {
                   setDocumentSearchQuery('');
                 }
               }}
-              className="w-48 xl:w-64 pl-10 bg-secondary/50 border-border/50 focus:border-primary/50 min-h-10 transition-all focus:w-64 xl:focus:w-80"
+              className="w-full pl-10 bg-secondary/50 border-border/50 focus:border-primary/50 min-h-10 transition-colors"
               aria-label="Search documents by name"
             />
           </div>
-        )}
-      </div>
+        </div>
+      )}
 
-      {/* Notifications */}
+      {/* Right section — notifications + profile together */}
+      <div className="flex items-center gap-1 sm:gap-2 shrink-0">
       <Popover open={notifOpen} onOpenChange={setNotifOpen}>
         <PopoverTrigger asChild>
           <Button
@@ -211,6 +211,7 @@ const Header = ({ title = 'Documents' }: HeaderProps) => {
           </DropdownMenuItem>
         </DropdownMenuContent>
       </DropdownMenu>
+      </div>
     </header>
   );
 };

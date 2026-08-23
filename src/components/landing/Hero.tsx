@@ -1,6 +1,6 @@
 import { motion, useMotionValue, useSpring } from 'framer-motion';
 import { useEffect, useRef } from 'react';
-import { ArrowRight, Sparkles } from 'lucide-react';
+import { ArrowRight } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import { SplineScene } from '@/components/ui/splite';
@@ -63,19 +63,6 @@ const Hero = () => {
                           px-6 pt-28 pb-10
                           sm:px-10 sm:pt-32 sm:pb-12
                           md:px-16 md:pt-0 md:pb-0">
-
-            {/* Badge */}
-            <motion.div
-              initial={{ opacity: 0, y: 16 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ duration: 0.55 }}
-              className="mb-5"
-            >
-              <span className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-white/10 border border-white/20 text-neutral-300 text-xs sm:text-sm font-medium">
-                <Sparkles className="w-3.5 h-3.5 sm:w-4 sm:h-4 shrink-0 text-white" />
-                AI-Powered Document Intelligence
-              </span>
-            </motion.div>
 
             {/* Headline */}
             <motion.h1

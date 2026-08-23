@@ -44,14 +44,11 @@ const Login = () => {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ email: email.trim(), password }),
       });
-      const data = (await res.json()) as AuthResponse | { message?: string; statusCode?: number };
+      const data = (await res.json()) as AuthResponse | { message?: string | string[]; statusCode?: number };
 
       if (!res.ok) {
-        const message = typeof (data as { message?: string }).message === 'string'
-          ? (data as { message: string }).message
-          : Array.isArray((data as { message?: string[] }).message)
-            ? (data as { message: string[] }).message?.[0]
-            : 'Sign in failed';
+        const raw = (data as { message?: string | string[] }).message;
+        const message = typeof raw === 'string' ? raw : Array.isArray(raw) ? raw[0] : 'Sign in failed';
         setError(message || 'Invalid email or password');
         setIsLoading(false);
         return;

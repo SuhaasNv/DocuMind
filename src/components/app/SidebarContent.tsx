@@ -23,6 +23,7 @@ import {
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
 import { useAppStore } from '@/stores/useAppStore';
+import { stopAllChatStreams } from '@/lib/chatStream';
 import { getApiBaseUrl } from '@/lib/api';
 
 interface SidebarContentProps {
@@ -41,7 +42,7 @@ const SidebarContent = ({ isExpanded, onLinkClick, isMobileSheet = false, showLo
   const pathname = location.pathname;
   const navigate = useNavigate();
   const [deleteDocId, setDeleteDocId] = useState<string | null>(null);
-  const { setAuthenticated, abortActiveSSE, documents, documentSearchQuery, removeDocument, accessToken, user } = useAppStore();
+  const { setAuthenticated, documents, documentSearchQuery, removeDocument, accessToken, user } = useAppStore();
 
   const isAdminPanel = pathname.startsWith('/app/admin');
   const recentDocuments = documentSearchQuery.trim()
@@ -51,7 +52,7 @@ const SidebarContent = ({ isExpanded, onLinkClick, isMobileSheet = false, showLo
     : documents.slice(0, 5);
 
   const handleLogout = () => {
-    abortActiveSSE?.();
+    stopAllChatStreams();
     setAuthenticated(false, null, null);
     onLinkClick?.();
   };
@@ -77,14 +78,13 @@ const SidebarContent = ({ isExpanded, onLinkClick, isMobileSheet = false, showLo
 
   // Admin panel: only admin-specific nav (no Documents, Upload, Recent Documents)
   const adminNavItems = [
-    { icon: Home, label: 'Home', path: '/' },
+    { icon: Home, label: 'Back to App', path: '/app' },
     { icon: ShieldAlert, label: 'Admin Dashboard', path: '/app/admin' },
     { icon: Settings, label: 'Settings', path: '/app/settings' },
   ];
 
   // Normal user nav
   const userNavItems = [
-    { icon: Home, label: 'Home', path: '/' },
     { icon: LayoutDashboard, label: 'Documents', path: '/app' },
     { icon: Settings, label: 'Settings', path: '/app/settings' },
   ];

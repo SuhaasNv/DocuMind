@@ -21,6 +21,7 @@ const MessageBubble = memo(function MessageBubble({ message, onRegenerate }: Mes
   const isUser = message.role === 'user';
   const showSourcesUnderAnswers = usePreferencesStore((s) => s.showSourcesUnderAnswers);
   const enableAnimations = usePreferencesStore((s) => s.enableAnimations);
+  const typewriterEffect = usePreferencesStore((s) => s.typewriterEffect);
 
   const [visibleLength, setVisibleLength] = useState(0);
   const [copied, setCopied] = useState(false);
@@ -63,7 +64,7 @@ const MessageBubble = memo(function MessageBubble({ message, onRegenerate }: Mes
 
   // Typewriter: animate visible length toward current content length while streaming
   useEffect(() => {
-    if (isUser || !message.isStreaming) return;
+    if (isUser || !message.isStreaming || !typewriterEffect) return;
 
     const tick = () => {
       setVisibleLength((prev) => {
@@ -87,7 +88,7 @@ const MessageBubble = memo(function MessageBubble({ message, onRegenerate }: Mes
         typewriterIntervalRef.current = null;
       }
     };
-  }, [isUser, message.isStreaming, message.content]);
+  }, [isUser, message.isStreaming, message.content, typewriterEffect]);
 
   const handleCopy = useCallback(async () => {
     try {
@@ -104,7 +105,9 @@ const MessageBubble = memo(function MessageBubble({ message, onRegenerate }: Mes
     ? { initial: { opacity: 0, y: 10 }, animate: { opacity: 1, y: 0 }, transition: { duration: 0.3 } }
     : {};
 
-  const streamingText = message.isStreaming ? message.content.slice(0, visibleLength) : '';
+  const streamingText = message.isStreaming
+    ? (typewriterEffect ? message.content.slice(0, visibleLength) : message.content)
+    : '';
 
   // Action toolbar shown below AI messages after streaming completes
   const showToolbar = !isUser && !message.isStreaming;

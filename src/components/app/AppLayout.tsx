@@ -22,7 +22,7 @@ const AppLayout = () => {
   const isMobile = useIsMobile();
   const isDesktop = useIsDesktop();
   const persist = useAppStore.persist;
-  const { mobileMenuOpen, setMobileMenuOpen, setSidebarOpen, isAuthenticated, accessToken } = useAppStore();
+  const { isMobileMenuOpen: mobileMenuOpen, setMobileMenuOpen, setSidebarOpen, isAuthenticated, accessToken } = useAppStore();
   const enableAnimations = usePreferencesStore((s) => s.enableAnimations);
   const { overlayRef } = useDragDrop();
 

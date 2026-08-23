@@ -27,6 +27,7 @@ import {
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
 import { useAppStore } from '@/stores/useAppStore';
+import { stopAllChatStreams } from '@/lib/chatStream';
 import { getApiBaseUrl } from '@/lib/api';
 
 const Sidebar = () => {
@@ -34,7 +35,7 @@ const Sidebar = () => {
   const pathname = location.pathname;
   const navigate = useNavigate();
   const [deleteDocId, setDeleteDocId] = useState<string | null>(null);
-  const { isSidebarOpen, toggleSidebar, setAuthenticated, abortActiveSSE, documents, documentSearchQuery, removeDocument, accessToken, user } = useAppStore();
+  const { isSidebarOpen, toggleSidebar, setAuthenticated, documents, documentSearchQuery, removeDocument, accessToken, user } = useAppStore();
 
   const isAdmin = user?.role === 'ADMIN';
   const isAdminPanel = pathname.startsWith('/app/admin');
@@ -46,7 +47,7 @@ const Sidebar = () => {
     : documents.slice(0, 5);
 
   const handleLogout = () => {
-    abortActiveSSE?.();
+    stopAllChatStreams();
     setAuthenticated(false, null, null);
   };
 
@@ -80,7 +81,6 @@ const Sidebar = () => {
 
   // Regular user nav (with admin panel link if admin)
   const userNavItems = [
-    { icon: Home, label: 'Home', path: '/' },
     { icon: LayoutDashboard, label: 'Documents', path: '/app' },
     { icon: Settings, label: 'Settings', path: '/app/settings' },
     ...(isAdmin ? [{ icon: ShieldAlert, label: 'Admin Panel', path: '/app/admin' }] : []),
