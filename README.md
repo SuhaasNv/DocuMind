@@ -9,7 +9,9 @@
 [![PostgreSQL](https://img.shields.io/badge/PostgreSQL-pgvector-4169E1?logo=postgresql)](https://www.postgresql.org/)
 [![Redis](https://img.shields.io/badge/Redis-7-DC382D?logo=redis)](https://redis.io/)
 
-**Production stack:** All on [Railway](https://railway.app/) — Frontend (nginx static) · Backend (NestJS) · PostgreSQL + pgvector · Redis · LLM → [OpenAI](https://platform.openai.com/)
+**Live demo:** [documind-web-production.up.railway.app](https://documind-web-production.up.railway.app)
+
+**Production stack:** All on [Railway](https://railway.app/) — Frontend (nginx static) · Backend (NestJS) · PostgreSQL + pgvector · Redis · Chat + embeddings → [OpenAI](https://platform.openai.com/)
 
 ---
 
@@ -64,15 +66,16 @@
 | Feature | Description |
 |--------|--------------|
 | **PDF Upload** | Drag-and-drop or file picker. 50MB limit. Server-side validation. |
-| **Real-time Processing** | BullMQ + Redis job queue. Extract text → chunk → embed → store in pgvector. Live progress updates. |
-| **RAG Chat** | Per-document chat with retrieval over your chunks. Configurable top-k and context caps. Answers cite your document, not generic knowledge. |
-| **Streaming Responses** | SSE streaming for chat. Token-by-token display with throttled UI updates. |
-| **Source Attribution** | Optional “show sources” in settings. Answers reference chunk indices. |
-| **User Auth** | Register, login, JWT-based sessions with optional persistence (localStorage). |
-| **Settings & Preferences** | Account info, auto-scroll, show sources, animations, system info (backend URL, version). |
-| **Health & Errors** | Backend health check on app load. Clear error messages for auth, network, and API failures. |
-| **Mobile-responsive UI** | Responsive landing, tubelight navbar, sheet-based mobile nav. Works on all screen sizes. |
-| **Modern Landing** | Spline 3D scene, spotlight effects, mouse-following blob, Framer Motion animations. |
+| **Fast Ingestion** | BullMQ workers with batched embeddings and bulk inserts (~7× faster than the naive loop). Token-aware recursive chunking (paragraphs → sentences → token cuts) with overlap. Live progress. |
+| **Hybrid Retrieval** | pgvector cosine search (HNSW index) fused with Postgres full-text search (tsvector + GIN) via Reciprocal Rank Fusion. Sources show real similarity scores. |
+| **Grounded RAG Chat** | Per-document chat with strict grounding rules and role-separated prompts. Conversation memory: follow-ups like "tell me more about it" resolve against prior turns. |
+| **Streaming Responses** | SSE streaming with batched UI updates. Answers keep generating in the background if you navigate away — like ChatGPT/Claude. Mid-stream provider errors are surfaced, never silently truncated. |
+| **Answer Cache** | Two-layer Redis cache (exact + semantic-similarity). Repeat questions answer in ~300ms, replayed over the same streaming protocol. Invalidated on re-processing and deletion. |
+| **Source Attribution** | Toggleable "show sources": each answer cites the chunks it was grounded in, with similarity scores and snippets. |
+| **User Auth** | Register, login, change password, JWT sessions. Rate-limited auth endpoints; ownership enforced on every document route. |
+| **Settings & Preferences** | Auto-scroll, sources, animations, typewriter effect, clear chat history — all functional and persisted. |
+| **Admin Dashboard** | Users, documents, job queue introspection, and system metrics behind role-based access. |
+| **Modern Landing** | Spline 3D scene, spotlight effects, Framer Motion animations. Mobile-responsive throughout. |
 
 ---
 
@@ -90,7 +93,6 @@
 | Animations | [Framer Motion](https://www.framer.com/motion/) |
 | 3D | [Spline](https://spline.design/) (React runtime) |
 | Data | Native `fetch`; SSE via `fetch` + `ReadableStream` for streaming chat |
-| Forms | React Hook Form, Zod |
 | Markdown | react-markdown (chat messages) |
 | Charts | Recharts |
 | Testing | Vitest, Testing Library |
@@ -107,8 +109,10 @@
 | Vector DB | [pgvector](https://github.com/pgvector/pgvector) (extension in Postgres) |
 | Queue | [BullMQ](https://docs.bullmq.io/) + Redis |
 | File Parse | pdf-parse (PDF text extraction) |
-| Embeddings | Configurable (stub or OpenAI) |
-| LLM | **Gemini** (default, streaming), Ollama, or OpenAI |
+| Embeddings | **OpenAI** `text-embedding-3-small` (batched); stub for keyless local dev |
+| LLM | **OpenAI** `gpt-4o-mini` (role-separated messages, streaming); Gemini, Ollama, or stub selectable |
+| Tokenization | gpt-tokenizer (cl100k_base) for chunking and history budgets |
+| Cache | Two-layer Redis chat cache (exact + semantic) |
 
 ### Infrastructure
 
@@ -126,8 +130,8 @@
 ### Prerequisites
 
 - **Node.js** 18+ (LTS recommended)
-- **Docker** and **Docker Compose** (for Postgres and Redis)
-- **Gemini API key** (optional for local LLM; get one at [Google AI Studio](https://aistudio.google.com/apikey))
+- **Docker** and **Docker Compose** (for local Postgres and Redis)
+- **OpenAI API key** — optional; everything runs with `stub` providers and no keys for local dev
 
 ### 1. Clone and install
 
@@ -159,12 +163,11 @@ Edit `backend/.env`:
 
 | Variable | Value |
 |----------|-------|
-| `DATABASE_URL` | `postgresql://user:password@localhost:5432/insight_garden` (or your Supabase URL) |
+| `DATABASE_URL` | `postgresql://user:password@localhost:5432/insight_garden` |
 | `JWT_SECRET` | Long random string (e.g. `openssl rand -base64 32`) |
-| `REDIS_HOST` | `localhost` |
-| `REDIS_PORT` | `6379` |
+| `REDIS_HOST` / `REDIS_PORT` | `localhost` / `6379` (or a full `REDIS_URL`) |
 | `CORS_ORIGIN` | `http://localhost:8080` |
-| `GEMINI_API_KEY` | Your Gemini API key (for RAG chat) |
+| `LLM_PROVIDER` / `EMBEDDING_PROVIDER` | `stub` works with no keys; set both to `openai` + `OPENAI_API_KEY` for real answers |
 
 Then:
 
@@ -211,7 +214,7 @@ Frontend runs at **http://localhost:8080**.
 ┌─────────────────────────────────────────────────────────────────────────────┐
 │                         Backend (NestJS)                                     │
 │  ┌──────────┐  ┌─────────────┐  ┌─────────────────────────────────────────┐ │
-│  │ Auth     │  │ Documents   │  │ RAG: Retrieval → Prompt → Gemini → Answer │ │
+│  │ Auth     │  │ Documents   │  │ RAG: Cache → Retrieve → Prompt → LLM      │ │
 │  │ JWT      │  │ Upload CRUD │  │ (streaming: SSE delta + done events)     │ │
 │  └──────────┘  └──────┬──────┘  └─────────────────────────────────────────┘ │
 │                       │                                                      │
@@ -224,15 +227,15 @@ Frontend runs at **http://localhost:8080**.
         ▼                              ▼
 ┌─────────────────┐            ┌─────────────────┐
 │ PostgreSQL      │            │ Redis           │
-│ + pgvector      │            │ (BullMQ)        │
+│ + pgvector      │            │ (BullMQ + cache)│
 └─────────────────┘            └─────────────────┘
 ```
 
 ### Data flow
 
 1. **Upload** — `POST /documents/upload` → create Document (PENDING) → enqueue job
-2. **Process** — Worker: PDF → text → chunk → embed → insert into `document_chunks` (pgvector) → status DONE
-3. **Chat** — `POST /documents/:id/chat/stream` → embed query → similarity search → RAG prompt → stream Gemini tokens via SSE
+2. **Process** — Worker: PDF → text → token-aware chunks → batched embeddings → bulk insert into `document_chunks` (pgvector) → status DONE
+3. **Chat** — `POST /documents/:id/chat/stream` → cache check (exact, then semantic) → on miss: hybrid retrieval (pgvector + full-text, RRF-fused) → role-separated prompt with conversation history → stream LLM tokens via SSE → cache the answer
 
 ---
 
@@ -249,17 +252,21 @@ Frontend runs at **http://localhost:8080**.
 
 | Variable | Required | Description |
 |----------|----------|-------------|
-| `DATABASE_URL` | Yes | PostgreSQL connection string. Add `?sslmode=require` for Supabase. |
+| `DATABASE_URL` | Yes | PostgreSQL connection string (also accepts `DATABASE_PRIVATE_URL`/`DATABASE_PUBLIC_URL`). |
 | `JWT_SECRET` | Yes | Long random string (e.g. `openssl rand -base64 32`). Must not be the default. |
 | `REDIS_HOST` / `REDIS_PORT` | Yes* | Redis for BullMQ. Local: `localhost`, `6379`. |
-| `REDIS_URL` | Yes* | Alternative: full Redis URL (e.g. Upstash `rediss://...`). |
+| `REDIS_URL` | Yes* | Alternative: full Redis URL (`redis://` or `rediss://`; path selects the logical DB). |
 | `CORS_ORIGIN` | No | Allowed origin (default `http://localhost:8080`). |
 | `PORT` | No | HTTP port (default `3000`). |
-| `LLM_PROVIDER` | No | `gemini` (default), `ollama`, `openai`, or `stub`. |
-| `GEMINI_API_KEY` | If Gemini | API key from [Google AI Studio](https://aistudio.google.com/apikey). |
-| `GEMINI_MODEL` | No | Model name (default `gemini-2.5-flash`). |
+| `LLM_PROVIDER` | No | `stub` (default, keyless), `openai`, `gemini`, or `ollama`. Production uses `openai`. |
+| `EMBEDDING_PROVIDER` | No | `stub` (default) or `openai`. Production uses `openai`. |
+| `OPENAI_API_KEY` | If OpenAI | Used for both chat and embeddings. |
+| `CHAT_CACHE_TTL_SECONDS` | No | Chat cache TTL (default `3600`). |
+| `CHAT_CACHE_SEMANTIC_THRESHOLD` | No | Semantic-hit cosine threshold (default `0.95`). |
+| `HISTORY_MAX_TOKENS` | No | Token budget for conversation history in prompts (default `1000`). |
+| `CONTEXTUAL_RETRIEVAL` | No | `true` prepends an LLM-generated situating sentence to each chunk at ingestion (default off). |
 
-See `backend/.env.example` for full options (Ollama, OpenAI, embeddings).
+See `backend/.env.example` for full options (Gemini, Ollama, dimensions, context caps).
 
 ---
 
@@ -274,7 +281,7 @@ insight-garden/
 │   │   ├── landing/          # Hero, Features, CTA, Footer, Navbar, PublicLayout
 │   │   └── ui/               # shadcn, Spline, Spotlight, TubelightNav
 │   ├── hooks/                # useBackendHealth, useToast, useMobile, useReducedMotion
-│   ├── lib/                  # api.ts, sseChat.ts, utils
+│   ├── lib/                  # api.ts, sseChat.ts, chatStream.ts (background streams), utils
 │   ├── pages/                # Index, Login, Register, Dashboard, ChatPage, Settings, etc.
 │   └── stores/               # useAppStore, usePreferencesStore
 ├── backend/
@@ -286,9 +293,10 @@ insight-garden/
 │       ├── documents/        # Controller, service, retrieval, RAG orchestrator
 │       ├── chunks/            # DocumentChunkService (pgvector)
 │       ├── embedding/        # Embedding service
-│       ├── rag/              # Prompt, Gemini client, LLM service
+│       ├── rag/              # Prompt, LLM service, chat cache, Gemini client
 │       ├── jobs/              # BullMQ document processor
-│       └── health/            # GET /health
+│       ├── health/            # GET /health
+│       └── ../scripts/smoke.ts # Cumulative end-to-end smoke suite
 ├── docker-compose.yml        # Postgres (pgvector) + Redis
 └── package.json              # Frontend deps and scripts
 ```
@@ -315,9 +323,31 @@ insight-garden/
 | `npm run build` | Compile to `dist/` |
 | `npm run start` | Run compiled app |
 | `npm run lint` | Run ESLint |
-| `npm run test` | Unit tests (Jest) |
+| `npm run test` | Unit tests (Jest) — chunking, RRF fusion, prompts, cache, embeddings |
+| `npx ts-node --transpile-only scripts/smoke.ts [url]` | End-to-end smoke suite (25 checks) against a running stack |
 | `npx prisma migrate deploy` | Apply migrations |
 | `npx prisma studio` | Open Prisma Studio |
+
+---
+
+## Performance & Quality
+
+Measured on the same 10-page PDF, verified by the cumulative smoke suite
+([PHASES.md](PHASES.md) has the full per-phase breakdown):
+
+| Metric | Before | After |
+|--------|--------|-------|
+| Ingestion (upload → ready) | 49.4s | **7.3s local / 4.1s prod** |
+| Repeat question (cache hit) | full LLM round trip | **~320ms** |
+| Dense retrieval | sequential scan (index had been dropped) | HNSW index |
+| Lexical retrieval | unindexed `ILIKE` scan | tsvector + GIN, `ts_rank_cd` |
+| Source scores | always `1.0` (min-max artifact) | real cosine similarity |
+
+Every change passed a verification gate: zero TypeScript errors, 30 unit
+tests, zero-error ESLint, and a 25-check black-box smoke suite covering
+auth, JWT enforcement, IDOR, upload validation, hostile input, SSE
+streaming, caching, conversation history, and cleanup — run against both
+local and production.
 
 ---
 
@@ -338,6 +368,8 @@ See [docs/CASE-STUDY-DEPLOYMENT.md](docs/CASE-STUDY-DEPLOYMENT.md) for a full de
 
 | Document | Description |
 |----------|-------------|
+| [PHASES.md](PHASES.md) | The six-phase upgrade roadmap with measured before/after numbers |
+| [CODEBASE_DOCUMENTATION.md](CODEBASE_DOCUMENTATION.md) | Architecture reference generated from the current code |
 | [docs/CASE-STUDY-DEPLOYMENT.md](docs/CASE-STUDY-DEPLOYMENT.md) | Historical deployment case study (pre-Railway migration) |
 | [docs/LOCAL-DEV-SANITY-CHECKLIST.md](docs/LOCAL-DEV-SANITY-CHECKLIST.md) | Step-by-step local dev verification |
 | [docs/TECHNICAL-AUDIT.md](docs/TECHNICAL-AUDIT.md) | Technical audit and architecture notes |
@@ -357,4 +389,4 @@ This project is currently unlicensed. All rights reserved.
 
 ---
 
-**DocuMind** — Chat with your documents. Powered by RAG, pgvector, and Gemini.
+**DocuMind** — Chat with your documents. Powered by RAG, pgvector, and OpenAI.
