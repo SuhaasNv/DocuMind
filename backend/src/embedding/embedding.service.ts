@@ -13,9 +13,13 @@ export class EmbeddingService {
   private readonly provider: string;
 
   constructor(private readonly config: ConfigService) {
-    this.dimension = this.config.get<number>(
-      'EMBEDDING_DIMENSION',
-      EMBEDDING_DIMENSION_DEFAULT,
+    // Number(): env values arrive as strings; a raw config.get<number>() would
+    // make the dimension check below compare 1536 !== "1536" and always throw.
+    this.dimension = Number(
+      this.config.get<string | number>(
+        'EMBEDDING_DIMENSION',
+        EMBEDDING_DIMENSION_DEFAULT,
+      ),
     );
     this.provider = this.config.get<string>('EMBEDDING_PROVIDER', 'stub');
   }
@@ -30,10 +34,19 @@ export class EmbeddingService {
    * Real: set EMBEDDING_PROVIDER=openai and OPENAI_API_KEY for OpenAI embeddings.
    */
   async embed(text: string): Promise<number[]> {
+    return (await this.embedBatch([text]))[0];
+  }
+
+  /**
+   * Generate embeddings for many texts in one provider call.
+   * OpenAI's /v1/embeddings accepts an array input; stub maps locally.
+   */
+  async embedBatch(texts: string[]): Promise<number[][]> {
+    if (texts.length === 0) return [];
     if (this.provider === 'openai') {
-      return this.embedOpenAI(text);
+      return this.embedBatchOpenAI(texts);
     }
-    return this.embedStub(text);
+    return texts.map((t) => this.embedStub(t));
   }
 
   /**
@@ -61,8 +74,9 @@ export class EmbeddingService {
 
   /**
    * OpenAI text-embedding-3-small (dimension 1536) or configurable model.
+   * One request for the whole batch; results are index-ordered by the API.
    */
-  private async embedOpenAI(text: string): Promise<number[]> {
+  private async embedBatchOpenAI(texts: string[]): Promise<number[][]> {
     const apiKey = this.config.get<string>('OPENAI_API_KEY');
     if (!apiKey) {
       throw new Error(
@@ -79,21 +93,38 @@ export class EmbeddingService {
         'Content-Type': 'application/json',
         Authorization: `Bearer ${apiKey}`,
       },
-      body: JSON.stringify({ input: text.slice(0, 8191), model }),
+      body: JSON.stringify({
+        input: texts.map((t) => t.slice(0, 8191)),
+        model,
+      }),
     });
     if (!res.ok) {
       const err = await res.text();
       throw new Error(`OpenAI embedding failed: ${res.status} ${err}`);
     }
     const data = (await res.json()) as {
-      data?: Array<{ embedding?: number[] }>;
+      data?: Array<{ index?: number; embedding?: number[] }>;
     };
-    const embedding = data?.data?.[0]?.embedding;
-    if (!embedding || embedding.length !== this.dimension) {
+    const rows = data?.data;
+    if (!rows || rows.length !== texts.length) {
       throw new Error(
-        `OpenAI returned embedding with dimension ${embedding?.length ?? 0}, expected ${this.dimension}`,
+        `OpenAI returned ${rows?.length ?? 0} embeddings, expected ${texts.length}`,
       );
     }
-    return embedding;
+    const out = new Array<number[]>(texts.length);
+    for (const row of rows) {
+      const embedding = row.embedding;
+      if (
+        row.index === undefined ||
+        !embedding ||
+        embedding.length !== this.dimension
+      ) {
+        throw new Error(
+          `OpenAI returned embedding with dimension ${embedding?.length ?? 0}, expected ${this.dimension}`,
+        );
+      }
+      out[row.index] = embedding;
+    }
+    return out;
   }
 }

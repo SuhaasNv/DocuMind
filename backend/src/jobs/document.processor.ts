@@ -16,12 +16,20 @@ const PROGRESS_AFTER_CHUNKING = 30;
 const PROGRESS_EMBEDDING_START = 30;
 const PROGRESS_EMBEDDING_END = 90;
 
+/** Chunks per embedding request / bulk insert (~384 SQL params per insert). */
+const EMBED_BATCH_SIZE = 64;
+
 export interface ProcessDocumentPayload {
   documentId: string;
   userId: string;
 }
 
-@Processor(QUEUE_NAME)
+@Processor(QUEUE_NAME, {
+  concurrency: 3,
+  // Cap embedding request rate across concurrent jobs; sized well under
+  // OpenAI tier-1 RPM limits (each unit of work = one batched API call).
+  limiter: { max: 10, duration: 1000 },
+})
 export class DocumentProcessor extends WorkerHost {
   private readonly logger = new Logger(DocumentProcessor.name);
 
@@ -81,21 +89,28 @@ export class DocumentProcessor extends WorkerHost {
       });
       if (!okChunk) return;
 
+      const startedAt = Date.now();
       const totalChunks = textChunks.length;
-      for (let i = 0; i < totalChunks; i++) {
-        const chunk = textChunks[i];
-        const embedding = await this.embeddingService.embed(chunk.content);
-        await this.documentChunkService.insertChunk(
-          documentId,
-          chunk.content,
-          embedding,
-          chunk.index,
+      for (let start = 0; start < totalChunks; start += EMBED_BATCH_SIZE) {
+        const batch = textChunks.slice(start, start + EMBED_BATCH_SIZE);
+        const embeddings = await this.embeddingService.embedBatch(
+          batch.map((c) => c.content),
         );
+        await this.documentChunkService.insertChunks(
+          documentId,
+          batch.map((c, i) => ({
+            content: c.content,
+            embedding: embeddings[i],
+            chunkIndex: c.index,
+          })),
+        );
+        // One progress write per batch, not per chunk.
+        const done = Math.min(start + batch.length, totalChunks);
         const progress = Math.min(
           PROGRESS_EMBEDDING_END,
           PROGRESS_EMBEDDING_START +
             Math.round(
-              ((i + 1) / totalChunks) *
+              (done / totalChunks) *
                 (PROGRESS_EMBEDDING_END - PROGRESS_EMBEDDING_START),
             ),
         );
@@ -112,7 +127,7 @@ export class DocumentProcessor extends WorkerHost {
         progress: 100,
       });
       this.logger.log(
-        `Document ${documentId} processed successfully (${totalChunks} chunks)`,
+        `Document ${documentId} processed successfully (${totalChunks} chunks in ${Date.now() - startedAt}ms embed+insert)`,
       );
     } catch (err) {
       this.logger.error(`Document ${documentId} processing failed:`, err);
@@ -164,8 +179,9 @@ export class DocumentProcessor extends WorkerHost {
   private async setFailed(
     documentId: string,
     userId: string,
-    _reason: string,
+    reason: string,
   ): Promise<void> {
+    this.logger.warn(`Document ${documentId} marked FAILED: ${reason}`);
     await this.updateProgress(documentId, userId, {
       status: DocumentStatus.FAILED,
       progress: 100,
