@@ -1,3 +1,6 @@
+// Must be first: modules read process.env at import time (e.g. BullModule.forRoot),
+// before ConfigModule loads .env.
+import 'dotenv/config';
 import { NestFactory } from '@nestjs/core';
 import { ValidationPipe } from '@nestjs/common';
 import { AppModule } from './app.module.js';
@@ -39,7 +42,7 @@ async function bootstrap() {
     }),
   );
 
-  // CORS: allow frontend with credentials. Accept CORS_ORIGIN list and also any *.vercel.app / *.railway.app so previews work.
+  // CORS: allow frontend with credentials. Accept CORS_ORIGIN list and also any *.railway.app so previews work.
   const corsOriginEnv = process.env.CORS_ORIGIN ?? 'http://localhost:8080';
   const corsOrigins = corsOriginEnv
     .split(',')
@@ -53,11 +56,7 @@ async function bootstrap() {
     if (allowedSet.has(origin)) return true;
     try {
       const u = new URL(origin);
-      if (
-        u.hostname.endsWith('.vercel.app') ||
-        u.hostname.endsWith('.railway.app')
-      )
-        return true;
+      if (u.hostname.endsWith('.railway.app')) return true;
     } catch {
       /* ignore */
     }
@@ -75,7 +74,7 @@ async function bootstrap() {
   console.log(
     '[CORS] Allowed origins:',
     [...allowedSet],
-    '+ *.vercel.app, *.railway.app',
+    '+ *.railway.app',
   );
 
   app.enableShutdownHooks();

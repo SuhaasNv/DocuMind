@@ -9,6 +9,7 @@ function getRedisConnection(): {
   host: string;
   port: number;
   password?: string;
+  db?: number;
   tls?: object;
 } {
   const redisUrl = process.env.REDIS_URL?.trim();
@@ -22,10 +23,13 @@ function getRedisConnection(): {
       const port = parseInt(u.port || '6379', 10);
       const password = u.password ? decodeURIComponent(u.password) : undefined;
       const needsTls = u.protocol === 'rediss:';
+      // Redis URL path selects the logical DB (e.g. redis://host:6379/1).
+      const db = parseInt(u.pathname.slice(1), 10);
       return {
         host,
         port,
         password,
+        ...(Number.isInteger(db) && { db }),
         ...(needsTls && { tls: {} }),
       };
     } catch {
