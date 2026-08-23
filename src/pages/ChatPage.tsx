@@ -14,14 +14,6 @@ import { useAppStore, type ChatSource } from '@/stores/useAppStore';
 import { usePreferencesStore } from '@/stores/usePreferencesStore';
 import { sendChatMessage, stopChatStream } from '@/lib/chatStream';
 
-const FOLLOW_UP_SUGGESTIONS = [
-  'Can you elaborate?',
-  'Give me an example',
-  'Summarize in one sentence',
-  'What are the key takeaways?',
-  'Any counterarguments?',
-] as const;
-
 const SCROLL_THRESHOLD_PX = 120;
 
 const ChatPage = () => {
@@ -43,6 +35,10 @@ const ChatPage = () => {
   const conversation = documentId ? conversations[documentId] : null;
   const messages = conversation?.messages || [];
   const isStreaming = messages.some((m) => m.isStreaming);
+  // Model-generated follow-ups from the last completed assistant answer.
+  const followUps =
+    [...messages].reverse().find((m) => m.role === 'assistant' && !m.isError)
+      ?.followUps ?? [];
 
   const scrollToBottom = useCallback((behavior: ScrollBehavior = 'smooth') => {
     const container = scrollContainerRef.current;
@@ -182,7 +178,12 @@ const ChatPage = () => {
           aria-atomic="false"
         >
           {messages.length === 0 ? (
-            <EmptyChatState onPromptClick={handleSendMessage} isLoading={isStreaming} />
+            <EmptyChatState
+              onPromptClick={handleSendMessage}
+              isLoading={isStreaming}
+              summary={document.summary}
+              suggestedQuestions={document.suggestedQuestions}
+            />
           ) : (
             <div className="max-w-4xl mx-auto px-6 py-6 space-y-6">
               <AnimatePresence mode="popLayout">
@@ -210,9 +211,9 @@ const ChatPage = () => {
           )}
         </div>
 
-        {/* Follow-up suggestion chips — compact strip shown after first exchange */}
+        {/* Follow-up chips — parsed from the model's FOLLOWUPS line (zero added latency) */}
         <AnimatePresence>
-          {messages.length > 0 && !isStreaming && document.status === 'DONE' && (
+          {followUps.length > 0 && !isStreaming && document.status === 'DONE' && (
             <motion.div
               initial={{ opacity: 0, y: 6 }}
               animate={{ opacity: 1, y: 0 }}
@@ -222,7 +223,7 @@ const ChatPage = () => {
               aria-label="Follow-up suggestions"
             >
               <div className="max-w-4xl mx-auto px-6 py-2 flex gap-2 overflow-x-auto scrollbar-none">
-                {FOLLOW_UP_SUGGESTIONS.map((suggestion) => (
+                {followUps.map((suggestion) => (
                   <button
                     key={suggestion}
                     onClick={() => handleSendMessage(suggestion)}

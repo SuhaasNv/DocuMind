@@ -37,7 +37,11 @@ Follow these rules strictly:
 When helpful, structure your answer using sections such as:
 - "From the document"
 - "Inference"
-- "General context (not from the document)"`;
+- "General context (not from the document)"
+
+After your complete answer, append ONE final line in EXACTLY this format (plain text on its own line, never inside a code block):
+FOLLOWUPS: ["question 1","question 2","question 3"]
+It must be a JSON array of 3 short follow-up questions the user could ask next about this document. Do not mention or refer to this line in the answer itself.`;
 /** When chunk scores are within this range, use a smaller context cap (fewer, higher-score chunks). */
 const SIMILAR_SCORE_RANGE = 0.1;
 /** Multiplier for max context when chunks are highly similar. */

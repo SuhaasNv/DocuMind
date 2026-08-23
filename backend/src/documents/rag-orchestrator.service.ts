@@ -4,6 +4,7 @@ import { RetrievalService } from './retrieval.service.js';
 import { PromptService, type HistoryTurn } from '../rag/prompt.service.js';
 import { LlmService } from '../rag/llm.service.js';
 import { ChatCacheService } from '../rag/chat-cache.service.js';
+import { parseFollowups } from '../rag/followups.js';
 import { EmbeddingService } from '../embedding/embedding.service.js';
 import { logRagLatency } from '../rag/rag-latency.logger.js';
 import type {
@@ -33,7 +34,14 @@ export interface RagChatInput {
 export type RagStreamEvent =
   | { type: 'delta'; data: string }
   | { type: 'error'; data: { message: string } }
-  | { type: 'done'; data: { sources: ChatSourceDto[]; cached?: boolean } };
+  | {
+      type: 'done';
+      data: {
+        sources: ChatSourceDto[];
+        cached?: boolean;
+        followUps?: string[];
+      };
+    };
 
 /**
  * RAG v1: grounded answer generation without streaming.
@@ -158,7 +166,8 @@ export class RagOrchestratorService {
       );
     const promptBuildMs = performance.now() - t0Prompt;
 
-    const answer = await this.llmService.completeMessages(messages);
+    const raw = await this.llmService.completeMessages(messages);
+    const { display: answer, followUps } = parseFollowups(raw);
 
     logRagLatency({ retrievalMs, promptBuildMs });
 
@@ -171,8 +180,13 @@ export class RagOrchestratorService {
       cache.queryEmbedding,
       answer,
       sources,
+      followUps,
     );
-    return { answer, sources };
+    return {
+      answer,
+      sources,
+      ...(followUps.length > 0 ? { followUps } : {}),
+    };
   }
 
   /**
@@ -261,7 +275,13 @@ export class RagOrchestratorService {
       if (piece.length > 0) yield { type: 'delta', data: piece };
       yield {
         type: 'done',
-        data: { sources: cache.hit.sources, cached: true },
+        data: {
+          sources: cache.hit.sources,
+          cached: true,
+          ...(cache.hit.followUps?.length
+            ? { followUps: cache.hit.followUps }
+            : {}),
+        },
       };
       return;
     }
@@ -346,17 +366,30 @@ export class RagOrchestratorService {
       // If the LLM stream errors or is aborted, we still yield done with the sources we have.
       const sources = this.buildSources(chunks, includedChunkIndices);
       logRagLatency({ retrievalMs, promptBuildMs, llmFirstTokenMs });
-      if (!errored && !signal?.aborted && fullAnswer.length > 0) {
+      // Strip the FOLLOWUPS line BEFORE caching so replays serve the display
+      // answer; followUps are stored separately so replays keep the chips.
+      const completed = !errored && !signal?.aborted && fullAnswer.length > 0;
+      const { display, followUps } = completed
+        ? parseFollowups(fullAnswer)
+        : { display: '', followUps: [] };
+      if (completed && display.length > 0) {
         void this.chatCache.store(
           documentId,
           settingsKey,
           trimmedQuestion,
           cache.queryEmbedding,
-          fullAnswer,
+          display,
           sources,
+          followUps,
         );
       }
-      yield { type: 'done', data: { sources } };
+      yield {
+        type: 'done',
+        data: {
+          sources,
+          ...(followUps.length > 0 ? { followUps } : {}),
+        },
+      };
     }
   }
 }

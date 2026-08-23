@@ -11,4 +11,8 @@ export interface DocumentResponseDto {
   status: DocumentStatus;
   progress: number;
   size?: number;
+  /** ~3-sentence LLM summary; null until generated (instant activation). */
+  summary: string | null;
+  /** Suggested questions the document can answer; null until generated. */
+  suggestedQuestions: string[] | null;
 }

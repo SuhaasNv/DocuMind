@@ -15,6 +15,8 @@ interface ApiDocument {
   status: 'PENDING' | 'PROCESSING' | 'DONE' | 'FAILED';
   progress: number;
   size?: number;
+  summary?: string | null;
+  suggestedQuestions?: string[] | null;
 }
 
 const POLL_INTERVAL_MS = 2000;
@@ -71,6 +73,8 @@ const UploadArea = () => {
         useAppStore.getState().updateDocument(docId, {
           status: data.status,
           progress: data.progress,
+          summary: data.summary ?? null,
+          suggestedQuestions: data.suggestedQuestions ?? null,
         });
         if (data.status === 'DONE' || data.status === 'FAILED') {
           if (pollRef.current[docId]) {

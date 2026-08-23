@@ -45,6 +45,8 @@ model Document {
   progress   Int            @default(0)
   size       Int?           // bytes
   filePath   String?        @map("file_path") // relative path under uploads dir
+  summary    String?        @db.Text // ~3-sentence LLM summary (instant activation)
+  suggestedQuestions Json?  @map("suggested_questions") // string[] of questions the doc can answer
   uploadedAt DateTime       @default(now()) @map("uploaded_at")
   updatedAt  DateTime       @updatedAt @map("updated_at")
   user       User           @relation(fields: [userId], references: [id], onDelete: Cascade)

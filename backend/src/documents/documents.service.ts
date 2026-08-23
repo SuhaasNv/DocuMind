@@ -15,6 +15,7 @@ import { InjectQueue } from '@nestjs/bullmq';
 import { Queue } from 'bullmq';
 import type { DocumentResponseDto } from './dto/document-response.dto.js';
 import { ChatCacheService } from '../rag/chat-cache.service.js';
+import { DocumentSummaryService } from '../rag/document-summary.service.js';
 
 const PDF_MIME = 'application/pdf';
 const MAX_FILE_SIZE_BYTES = 50 * 1024 * 1024; // 50MB
@@ -30,6 +31,7 @@ export class DocumentsService {
     private readonly documentChunkService: DocumentChunkService,
     @InjectQueue(QUEUE_NAME) private readonly documentQueue: Queue,
     private readonly chatCache: ChatCacheService,
+    private readonly summaryService: DocumentSummaryService,
   ) {}
 
   async createFromUpload(
@@ -95,6 +97,11 @@ export class DocumentsService {
     }
     if (document.userId !== userId) {
       throw new ForbiddenException('Access denied');
+    }
+    if (document.status === DocumentStatus.DONE && document.summary === null) {
+      // Lazy backfill for documents processed before summaries existed —
+      // fire-and-forget; the response never waits on the LLM.
+      void this.summaryService.backfill(document.id, document.name);
     }
     return this.toResponse(document);
   }
@@ -226,6 +233,17 @@ export class DocumentsService {
       status: doc.status,
       progress: doc.progress,
       size: doc.size ?? undefined,
+      summary: doc.summary,
+      suggestedQuestions: this.toQuestions(doc.suggestedQuestions),
     };
+  }
+
+  /** The Json column is untyped at runtime; keep only an array of strings. */
+  private toQuestions(
+    value: PrismaDocument['suggestedQuestions'],
+  ): string[] | null {
+    if (!Array.isArray(value)) return null;
+    const questions = value.filter((q): q is string => typeof q === 'string');
+    return questions.length > 0 ? questions : null;
   }
 }

@@ -13,6 +13,8 @@ interface ApiDocument {
     status: 'PENDING' | 'PROCESSING' | 'DONE' | 'FAILED';
     progress: number;
     size?: number;
+    summary?: string | null;
+    suggestedQuestions?: string[] | null;
 }
 
 export const useDragDrop = () => {
@@ -37,6 +39,8 @@ export const useDragDrop = () => {
                 useAppStore.getState().updateDocument(docId, {
                     status: data.status,
                     progress: data.progress,
+                    summary: data.summary ?? null,
+                    suggestedQuestions: data.suggestedQuestions ?? null,
                 });
                 if (data.status === 'DONE' || data.status === 'FAILED') {
                     if (pollRef.current[docId]) {

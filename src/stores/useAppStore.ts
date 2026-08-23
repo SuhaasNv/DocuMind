@@ -10,6 +10,10 @@ export interface Document {
   status: DocumentStatus;
   progress: number;
   size?: number;
+  /** ~3-sentence LLM summary; null until generated (instant activation). */
+  summary?: string | null;
+  /** Suggested questions the document can answer; null until generated. */
+  suggestedQuestions?: string[] | null;
 }
 
 export interface ChatSource {
@@ -33,6 +37,8 @@ export interface Message {
   isStreaming?: boolean;
   isError?: boolean;
   sources?: ChatSource[];
+  /** Follow-up question chips parsed from the answer's FOLLOWUPS line. */
+  followUps?: string[];
 }
 
 export interface Conversation {
@@ -87,6 +93,7 @@ interface AppState {
   updateMessage: (documentId: string, messageId: string, content: string) => void;
   setStreaming: (documentId: string, messageId: string, isStreaming: boolean) => void;
   setMessageSources: (documentId: string, messageId: string, sources: ChatSource[]) => void;
+  setMessageFollowUps: (documentId: string, messageId: string, followUps: string[]) => void;
   setMessageError: (documentId: string, messageId: string) => void;
   clearConversation: (documentId: string) => void;
   removeLastMessages: (documentId: string, count: number) => void;
@@ -253,6 +260,23 @@ export const useAppStore = create<AppState>()(
               ...conversation,
               messages: conversation.messages.map((msg) =>
                 msg.id === messageId ? { ...msg, sources } : msg
+              ),
+            },
+          },
+        };
+      }),
+
+      setMessageFollowUps: (documentId, messageId, followUps) => set((state) => {
+        const conversation = state.conversations[documentId];
+        if (!conversation) return state;
+
+        return {
+          conversations: {
+            ...state.conversations,
+            [documentId]: {
+              ...conversation,
+              messages: conversation.messages.map((msg) =>
+                msg.id === messageId ? { ...msg, followUps } : msg
               ),
             },
           },

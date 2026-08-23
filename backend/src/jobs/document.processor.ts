@@ -10,6 +10,7 @@ import { DocumentChunkService } from '../chunks/document-chunk.service.js';
 import { chunkText } from '../lib/chunking.js';
 import { ChatCacheService } from '../rag/chat-cache.service.js';
 import { LlmService } from '../rag/llm.service.js';
+import { DocumentSummaryService } from '../rag/document-summary.service.js';
 
 const QUEUE_NAME = 'document-processing';
 
@@ -46,6 +47,7 @@ export class DocumentProcessor extends WorkerHost {
     private readonly documentChunkService: DocumentChunkService,
     private readonly chatCache: ChatCacheService,
     private readonly llmService: LlmService,
+    private readonly summaryService: DocumentSummaryService,
   ) {
     super();
   }
@@ -211,6 +213,14 @@ export class DocumentProcessor extends WorkerHost {
         );
         if (!okProgress) return;
       }
+
+      // Instant activation: one LLM call for summary + suggested questions.
+      // Best-effort — a failure logs a warning and the document still goes DONE.
+      await this.summaryService.generateForText(
+        documentId,
+        document.name,
+        text,
+      );
 
       await this.updateProgress(documentId, document.userId, {
         status: DocumentStatus.DONE,

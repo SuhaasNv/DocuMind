@@ -16,6 +16,8 @@ interface ApiDocument {
   status: 'PENDING' | 'PROCESSING' | 'DONE' | 'FAILED';
   progress: number;
   size?: number;
+  summary?: string | null;
+  suggestedQuestions?: string[] | null;
 }
 
 const Dashboard = () => {
@@ -46,6 +48,8 @@ const Dashboard = () => {
           status: d.status,
           progress: d.progress,
           size: d.size,
+          summary: d.summary ?? null,
+          suggestedQuestions: d.suggestedQuestions ?? null,
         }));
         setDocuments(docs);
       })

@@ -1,5 +1,6 @@
 import { streamChat, type ChatHistoryTurn } from './sseChat';
 import { getApiBaseUrl } from './api';
+import { parseFollowups, stripStreamingTail } from './followups';
 import { useAppStore, type Message } from '@/stores/useAppStore';
 
 /**
@@ -79,9 +80,13 @@ export async function sendChatMessage(documentId: string, content: string): Prom
   // Batch delta -> store updates into a ~50ms flush instead of one state
   // update (and one re-render) per token.
   let flushTimer: ReturnType<typeof setTimeout> | null = null;
+  // Display strips the trailing FOLLOWUPS line (which may arrive split
+  // across deltas) — fullContent keeps the raw buffer for final parsing.
   const flushContent = () => {
     flushTimer = null;
-    useAppStore.getState().updateMessage(documentId, assistantId, fullContent);
+    useAppStore
+      .getState()
+      .updateMessage(documentId, assistantId, stripStreamingTail(fullContent));
   };
   const scheduleFlush = () => {
     if (flushTimer === null) flushTimer = setTimeout(flushContent, 50);
@@ -91,7 +96,9 @@ export async function sendChatMessage(documentId: string, content: string): Prom
       clearTimeout(flushTimer);
       flushTimer = null;
     }
-    useAppStore.getState().updateMessage(documentId, assistantId, fullContent);
+    useAppStore
+      .getState()
+      .updateMessage(documentId, assistantId, stripStreamingTail(fullContent));
   };
 
   const clearIdleTimer = () => {
@@ -125,18 +132,25 @@ export async function sendChatMessage(documentId: string, content: string): Prom
           fullContent += chunk;
           scheduleFlush();
         },
-        onDone: (sources) => {
+        onDone: (sources, serverFollowUps) => {
           clearIdleTimer();
           if (signal.aborted) return;
+          // Cache replays stream the already-stripped answer and carry the
+          // chips in the done event; live streams are parsed locally.
+          const parsed = parseFollowups(fullContent);
+          fullContent = parsed.display;
           cancelAndFlush();
           const s = useAppStore.getState();
           s.setStreaming(documentId, assistantId, false);
           if (sources.length > 0) s.setMessageSources(documentId, assistantId, sources);
+          const followUps = serverFollowUps.length > 0 ? serverFollowUps : parsed.followUps;
+          if (followUps.length > 0) s.setMessageFollowUps(documentId, assistantId, followUps);
         },
         onError: (message) => {
           clearIdleTimer();
           if (signal.aborted) return;
           // Mid-stream error: keep the partial answer, append the error note.
+          fullContent = stripStreamingTail(fullContent);
           fullContent = fullContent.length > 0
             ? `${fullContent}\n\n_${message}_`
             : `Sorry, something went wrong: ${message}`;

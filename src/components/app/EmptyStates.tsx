@@ -72,19 +72,29 @@ export const EmptySearch = () => (
     />
 );
 
+const FALLBACK_SUGGESTIONS = [
+    'What is the main topic?',
+    'Summarize the key points',
+    'What are the risks?',
+    'Explain the methodology',
+];
+
 export const EmptyChatState = ({
     onPromptClick,
     isLoading = false,
+    summary,
+    suggestedQuestions,
 }: {
     onPromptClick?: (q: string) => void;
     isLoading?: boolean;
+    /** Document summary shown as a card; falls back to generic copy when null. */
+    summary?: string | null;
+    /** Document-specific question chips; falls back to generic chips when null. */
+    suggestedQuestions?: string[] | null;
 }) => {
-    const SUGGESTIONS = [
-        'What is the main topic?',
-        'Summarize the key points',
-        'What are the risks?',
-        'Explain the methodology',
-    ];
+    const suggestions = suggestedQuestions?.length
+        ? suggestedQuestions.slice(0, 4)
+        : FALLBACK_SUGGESTIONS;
 
     return (
         <div className="flex-1 flex items-center justify-center p-8 min-h-[400px]">
@@ -104,9 +114,25 @@ export const EmptyChatState = ({
                 </motion.div>
 
                 <h2 className="text-2xl font-bold mb-3 tracking-tight">Ask anything</h2>
-                <p className="text-muted-foreground mb-8 text-base">
-                    This document is ready. I can answer specific questions, summarize sections, or explain complex terms.
-                </p>
+                {summary ? (
+                    <motion.div
+                        initial={{ opacity: 0, y: 10 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        transition={{ delay: 0.05 }}
+                        className="mb-8 p-4 rounded-xl bg-secondary/30 border border-border/50 text-left"
+                    >
+                        <p className="text-[11px] font-medium text-muted-foreground uppercase tracking-wide mb-1.5">
+                            Summary
+                        </p>
+                        <p className="text-sm text-foreground/80 leading-relaxed break-words">
+                            {summary}
+                        </p>
+                    </motion.div>
+                ) : (
+                    <p className="text-muted-foreground mb-8 text-base">
+                        This document is ready. I can answer specific questions, summarize sections, or explain complex terms.
+                    </p>
+                )}
 
                 {/* Suggestion chips — dimmed while a response is in flight */}
                 <div
@@ -116,7 +142,7 @@ export const EmptyChatState = ({
                     )}
                     aria-hidden={isLoading}
                 >
-                    {SUGGESTIONS.map((question, i) => (
+                    {suggestions.map((question, i) => (
                         <motion.button
                             key={question}
                             initial={{ opacity: 0, y: 10 }}

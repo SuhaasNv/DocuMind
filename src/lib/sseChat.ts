@@ -21,13 +21,20 @@ export interface ChatSource {
 
 export interface StreamChatCallbacks {
   onDelta: (chunk: string) => void;
-  onDone: (sources: ChatSource[]) => void;
+  onDone: (sources: ChatSource[], followUps: string[]) => void;
   onError: (message: string) => void;
 }
 
 export interface ChatHistoryTurn {
   role: 'user' | 'assistant';
   content: string;
+}
+
+/** Keep only an array of strings from an untrusted done-event payload. */
+function parseFollowUpsPayload(value: unknown): string[] {
+  return Array.isArray(value)
+    ? value.filter((q): q is string => typeof q === 'string')
+    : [];
 }
 
 export interface StreamChatOptions {
@@ -134,10 +141,16 @@ export async function streamChat(
 
         if (eventType === 'done') {
           try {
-            const payload = JSON.parse(dataLine) as { sources?: ChatSource[] };
-            callbacks.onDone(Array.isArray(payload.sources) ? payload.sources : []);
+            const payload = JSON.parse(dataLine) as {
+              sources?: ChatSource[];
+              followUps?: unknown;
+            };
+            callbacks.onDone(
+              Array.isArray(payload.sources) ? payload.sources : [],
+              parseFollowUpsPayload(payload.followUps),
+            );
           } catch {
-            callbacks.onDone([]);
+            callbacks.onDone([], []);
           }
           return;
         }
@@ -164,10 +177,16 @@ export async function streamChat(
       }
       if (eventType === 'done' && dataLine) {
         try {
-          const payload = JSON.parse(dataLine) as { sources?: ChatSource[] };
-          callbacks.onDone(Array.isArray(payload.sources) ? payload.sources : []);
+          const payload = JSON.parse(dataLine) as {
+            sources?: ChatSource[];
+            followUps?: unknown;
+          };
+          callbacks.onDone(
+            Array.isArray(payload.sources) ? payload.sources : [],
+            parseFollowUpsPayload(payload.followUps),
+          );
         } catch {
-          callbacks.onDone([]);
+          callbacks.onDone([], []);
         }
       }
     }

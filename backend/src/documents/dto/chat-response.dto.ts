@@ -17,4 +17,6 @@ export interface ChatResponseDto {
   sources: ChatSourceDto[];
   /** True when served from the chat cache (exact or semantic hit). */
   cached?: boolean;
+  /** Follow-up questions parsed from the model's trailing FOLLOWUPS line. */
+  followUps?: string[];
 }

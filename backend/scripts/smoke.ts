@@ -423,9 +423,13 @@ async function main(): Promise<void> {
     cached,
     `${s2.ms}ms vs first ${s1.ms}ms`,
   );
+  // Phase 8: live streams carry a trailing FOLLOWUPS line that the cache
+  // stores stripped; compare the stripped display forms.
+  const stripFollowups = (t: string) =>
+    t.replace(/\n?\s*FOLLOWUPS:.*$/s, '').trim();
   check(
     'cached replay produces same non-empty answer text',
-    s2.text.length > 0 && s2.text === s1.text,
+    s2.text.length > 0 && stripFollowups(s2.text) === stripFollowups(s1.text),
   );
   // Semantic layer: same meaning, different whitespace/case → exact-normalized
   // hit; a paraphrase relies on embedding similarity, so only assert the

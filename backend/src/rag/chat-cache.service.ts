@@ -6,8 +6,11 @@ import { getRedisConnection } from '../lib/redis-connection.js';
 import type { ChatSourceDto } from '../documents/dto/chat-response.dto.js';
 
 export interface CachedChat {
+  /** Display answer (trailing FOLLOWUPS line already stripped). */
   answer: string;
   sources: ChatSourceDto[];
+  /** Follow-up questions, stored separately so cache replays include chips. */
+  followUps?: string[];
 }
 
 interface CacheEntry extends CachedChat {
@@ -109,7 +112,11 @@ export class ChatCacheService implements OnModuleDestroy {
       );
       if (!raw) return null;
       const entry = JSON.parse(raw) as CacheEntry;
-      return { answer: entry.answer, sources: entry.sources };
+      return {
+        answer: entry.answer,
+        sources: entry.sources,
+        followUps: entry.followUps,
+      };
     } catch {
       return null;
     }
@@ -140,7 +147,11 @@ export class ChatCacheService implements OnModuleDestroy {
       }
       if (!best) return null;
       return {
-        hit: { answer: best.entry.answer, sources: best.entry.sources },
+        hit: {
+          answer: best.entry.answer,
+          sources: best.entry.sources,
+          followUps: best.entry.followUps,
+        },
         similarity: best.similarity,
       };
     } catch {
@@ -155,6 +166,7 @@ export class ChatCacheService implements OnModuleDestroy {
     embedding: number[] | null,
     answer: string,
     sources: ChatSourceDto[],
+    followUps: string[] = [],
   ): Promise<void> {
     try {
       const key = this.entryKey(documentId, settingsKey, question);
@@ -162,6 +174,7 @@ export class ChatCacheService implements OnModuleDestroy {
         question: normalizeQuestion(question),
         answer,
         sources,
+        ...(followUps.length > 0 ? { followUps } : {}),
         ...(embedding ? { embedding } : {}),
       };
       await this.client
