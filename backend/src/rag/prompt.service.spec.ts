@@ -27,7 +27,8 @@ describe('PromptService.buildRagMessages', () => {
     );
     expect(messages[0].role).toBe('system');
     expect(messages[0].content).toContain('Document context');
-    expect(messages[0].content).toContain('[Chunk 0]');
+    expect(messages[0].content).toContain('[1]');
+    expect(messages[0].content).toContain('[2]');
     expect(messages[1]).toEqual({
       role: 'user',
       content: 'What is the codename?',

@@ -3,6 +3,9 @@ export interface RetrievalResultDto {
   content: string;
   score: number;
   chunkIndex: number;
+  /** Source-PDF page range; null for chunks ingested before page-aware chunking. */
+  pageStart: number | null;
+  pageEnd: number | null;
 }
 
 export interface RetrievalResponseDto {

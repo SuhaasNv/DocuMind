@@ -1,6 +1,6 @@
 import { memo, useState, useEffect, useRef, useCallback } from 'react';
 import { cn } from '@/lib/utils';
-import { Message } from '@/stores/useAppStore';
+import { Message, type ChatSource } from '@/stores/useAppStore';
 import { usePreferencesStore } from '@/stores/usePreferencesStore';
 import { Bot, User, Copy, Check, RefreshCw, RotateCcw, AlertCircle } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
@@ -18,9 +18,11 @@ interface MessageBubbleProps {
   message: Message;
   /** Passed only to the last assistant message — shows Regenerate button */
   onRegenerate?: () => void;
+  /** Opens the citation PDF viewer for a source. */
+  onOpenSource?: (source: ChatSource) => void;
 }
 
-const MessageBubble = memo(function MessageBubble({ message, onRegenerate }: MessageBubbleProps) {
+const MessageBubble = memo(function MessageBubble({ message, onRegenerate, onOpenSource }: MessageBubbleProps) {
   const isUser = message.role === 'user';
   const showSourcesUnderAnswers = usePreferencesStore((s) => s.showSourcesUnderAnswers);
   const enableAnimations = usePreferencesStore((s) => s.enableAnimations);
@@ -40,10 +42,36 @@ const MessageBubble = memo(function MessageBubble({ message, onRegenerate }: Mes
     message.content.startsWith('Request timed out');
 
   const showSources = !isUser && showSourcesUnderAnswers && message.sources && message.sources.length > 0;
-  // Sort by chunk index so citations follow document order
+  // Marker order ([1], [2], ...) so cards match the inline citations.
   const sortedSources = showSources
-    ? [...message.sources!].sort((a, b) => a.chunkIndex - b.chunkIndex)
+    ? [...message.sources!].sort(
+        (a, b) => (a.marker ?? a.chunkIndex + 1) - (b.marker ?? b.chunkIndex + 1),
+      )
     : [];
+  const sourceByMarker = new Map(
+    sortedSources.map((src, i) => [src.marker ?? i + 1, src]),
+  );
+
+  // Inline [n] markers: turn known citation numbers into internal #cite links
+  // (rendered as chips below); unknown numbers stay plain text. With sources
+  // hidden, markers are stripped entirely.
+  const displayContent = isUser
+    ? message.content
+    : message.content.replace(/\[(\d{1,2})\](?!\()/g, (full, num: string) => {
+        const n = parseInt(num, 10);
+        if (!sourceByMarker.has(n)) return full;
+        if (!showSourcesUnderAnswers) return '';
+        return `[${n}](#cite-${n})`;
+      });
+
+  const flashCard = (marker: number) => {
+    const el = document.getElementById(`cite-card-${message.id}-${marker}`);
+    if (!el) return;
+    el.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    el.classList.remove('cite-card-flash');
+    void el.offsetWidth; // restart the animation
+    el.classList.add('cite-card-flash');
+  };
 
   // Reset visible length when switching to a different message
   useEffect(() => {
@@ -162,6 +190,28 @@ const MessageBubble = memo(function MessageBubble({ message, onRegenerate }: Mes
             ) : (
               <ReactMarkdown
                 components={{
+                  a: ({ href, children, ...props }) => {
+                    const cite = href?.startsWith('#cite-')
+                      ? parseInt(href.slice(6), 10)
+                      : NaN;
+                    if (!Number.isNaN(cite) && sourceByMarker.has(cite)) {
+                      return (
+                        <button
+                          type="button"
+                          onClick={() => flashCard(cite)}
+                          className="cite-chip"
+                          aria-label={`Show source ${cite}`}
+                        >
+                          {cite}
+                        </button>
+                      );
+                    }
+                    return (
+                      <a href={href} target="_blank" rel="noreferrer" {...props}>
+                        {children}
+                      </a>
+                    );
+                  },
                   code: ({ className, children, ...props }) => {
                     const match = /language-(\w+)/.exec(className || '');
                     const isInline = !match;
@@ -194,7 +244,7 @@ const MessageBubble = memo(function MessageBubble({ message, onRegenerate }: Mes
                   ),
                 }}
               >
-                {message.content}
+                {displayContent}
               </ReactMarkdown>
             )}
           </div>
@@ -205,36 +255,42 @@ const MessageBubble = memo(function MessageBubble({ message, onRegenerate }: Mes
                 Sources
               </p>
               <div className="flex flex-col gap-1.5">
-                {sortedSources.map((src) => (
-                  <div
-                    key={src.chunkIndex}
-                    className="flex items-start gap-2 rounded-lg bg-muted/30 px-2.5 py-2 text-xs"
-                  >
-                    {/* Passage number badge */}
-                    <span className="shrink-0 mt-0.5 font-mono text-[10px] font-semibold text-primary/70 bg-primary/10 rounded px-1 py-0.5 leading-none">
-                      §{src.chunkIndex + 1}
-                    </span>
-
-                    {/* Snippet or fallback label */}
-                    {src.snippet ? (
-                      <span className="text-muted-foreground leading-relaxed line-clamp-2 flex-1">
-                        {src.snippet}
-                      </span>
-                    ) : (
-                      <span className="text-muted-foreground italic flex-1">
-                        Passage {src.chunkIndex + 1}
-                      </span>
-                    )}
-
-                    {/* Relevance score */}
-                    <span
-                      className="shrink-0 text-[10px] tabular-nums text-muted-foreground/60 self-start mt-0.5"
-                      title={`Relevance: ${Math.round(src.score * 100)}%`}
+                {sortedSources.map((src, i) => {
+                  const marker = src.marker ?? i + 1;
+                  const cleaned = (src.snippet ?? '').replace(/\s+/g, ' ').trim();
+                  return (
+                    <button
+                      key={marker}
+                      type="button"
+                      id={`cite-card-${message.id}-${marker}`}
+                      onClick={() => onOpenSource?.(src)}
+                      className="flex items-start gap-2 rounded-lg bg-muted/30 hover:bg-muted/60 transition-colors px-2.5 py-2 text-xs text-left w-full focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                      aria-label={`Open source ${marker} in the PDF viewer`}
                     >
-                      {Math.round(src.score * 100)}%
-                    </span>
-                  </div>
-                ))}
+                      <span className="shrink-0 mt-0.5 font-mono text-[10px] font-semibold text-primary bg-primary/15 rounded px-1.5 py-0.5 leading-none">
+                        {marker}
+                      </span>
+                      <span className="flex-1 min-w-0">
+                        <span className="block text-[10px] font-medium text-foreground/70 mb-0.5">
+                          {src.pageStart != null
+                            ? src.pageStart === src.pageEnd || src.pageEnd == null
+                              ? `Page ${src.pageStart}`
+                              : `Pages ${src.pageStart}–${src.pageEnd}`
+                            : 'Page unknown — reprocess for precise citations'}
+                        </span>
+                        <span className="block text-muted-foreground leading-relaxed line-clamp-2">
+                          {cleaned || `Passage ${src.chunkIndex + 1}`}
+                        </span>
+                      </span>
+                      <span
+                        className="shrink-0 text-[10px] tabular-nums text-muted-foreground/60 self-start mt-0.5"
+                        title={`Relevance: ${Math.round(src.score * 100)}%`}
+                      >
+                        {Math.round(src.score * 100)}%
+                      </span>
+                    </button>
+                  );
+                })}
               </div>
             </div>
           )}

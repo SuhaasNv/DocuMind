@@ -1,4 +1,4 @@
-import { useRef, useEffect, useCallback } from 'react';
+import { useRef, useEffect, useCallback, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { ArrowLeft, FileText, Plus } from 'lucide-react';
@@ -8,8 +8,9 @@ import Header from '@/components/app/Header';
 import MessageBubble from '@/components/chat/MessageBubble';
 import ChatInput from '@/components/chat/ChatInput';
 import { EmptyChatState } from '@/components/app/EmptyStates';
+import { PdfViewerSheet } from '@/components/chat/PdfViewerSheet';
 import TypingIndicator from '@/components/chat/TypingIndicator';
-import { useAppStore } from '@/stores/useAppStore';
+import { useAppStore, type ChatSource } from '@/stores/useAppStore';
 import { usePreferencesStore } from '@/stores/usePreferencesStore';
 import { sendChatMessage, stopChatStream } from '@/lib/chatStream';
 
@@ -28,6 +29,7 @@ const ChatPage = () => {
   const navigate = useNavigate();
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const scrollContainerRef = useRef<HTMLDivElement>(null);
+  const [viewerSource, setViewerSource] = useState<ChatSource | null>(null);
 
   const {
     documents,
@@ -193,6 +195,7 @@ const ChatPage = () => {
                       key={message.id}
                       message={message}
                       onRegenerate={isLastAssistant && !isStreaming ? handleRegenerate : undefined}
+                      onOpenSource={setViewerSource}
                     />
                   );
                 })}
@@ -241,6 +244,15 @@ const ChatPage = () => {
           documentStatus={document.status}
         />
       </div>
+
+      {documentId && (
+        <PdfViewerSheet
+          documentId={documentId}
+          documentName={document.name}
+          source={viewerSource}
+          onClose={() => setViewerSource(null)}
+        />
+      )}
     </>
   );
 };

@@ -5,6 +5,8 @@ interface Row {
   content: string;
   chunk_index: number;
   score: number;
+  page_start: number | null;
+  page_end: number | null;
 }
 
 const row = (id: string, score: number, idx = 0): Row => ({
@@ -12,6 +14,8 @@ const row = (id: string, score: number, idx = 0): Row => ({
   content: `content-${id}`,
   chunk_index: idx,
   score,
+  page_start: 2,
+  page_end: 3,
 });
 
 describe('rrfFuse (Reciprocal Rank Fusion, k=60)', () => {
@@ -59,6 +63,8 @@ describe('rrfFuse (Reciprocal Rank Fusion, k=60)', () => {
       content: 'content-a',
       chunkIndex: 7,
       score: 0.5,
+      pageStart: 2,
+      pageEnd: 3,
     });
   });
 });

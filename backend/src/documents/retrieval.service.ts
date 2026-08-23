@@ -27,6 +27,8 @@ interface CandidateRow {
   content: string;
   chunk_index: number;
   score: number;
+  page_start: number | null;
+  page_end: number | null;
 }
 
 /**
@@ -68,6 +70,8 @@ export function rrfFuse(
       content: row.content,
       chunkIndex: Number(row.chunk_index),
       score: reportedScore ?? 0,
+      pageStart: row.page_start === null ? null : Number(row.page_start),
+      pageEnd: row.page_end === null ? null : Number(row.page_end),
     }));
 }
 
@@ -143,7 +147,7 @@ export class RetrievalService {
     const embeddingStr = `[${queryEmbedding.join(',')}]`;
 
     let rows = await this.prisma.$queryRawUnsafe<CandidateRow[]>(
-      `SELECT id, content, chunk_index,
+      `SELECT id, content, chunk_index, page_start, page_end,
               (1 - (embedding <=> $1::vector)) AS score
        FROM document_chunks
        WHERE document_id = $2
@@ -159,7 +163,7 @@ export class RetrievalService {
         `Retrieval: 0 chunks from similarity for document ${documentId}; trying fallback by order`,
       );
       rows = await this.prisma.$queryRawUnsafe<CandidateRow[]>(
-        `SELECT id, content, chunk_index, 0.5 AS score
+        `SELECT id, content, chunk_index, page_start, page_end, 0.5 AS score
          FROM document_chunks
          WHERE document_id = $1
          ORDER BY chunk_index ASC
@@ -187,7 +191,7 @@ export class RetrievalService {
     query: string,
   ): Promise<CandidateRow[]> {
     const rows = await this.prisma.$queryRawUnsafe<CandidateRow[]>(
-      `SELECT id, content, chunk_index,
+      `SELECT id, content, chunk_index, page_start, page_end,
               ts_rank_cd(content_tsv, q) AS score
        FROM document_chunks, plainto_tsquery('english', $2) q
        WHERE document_id = $1 AND content_tsv @@ q

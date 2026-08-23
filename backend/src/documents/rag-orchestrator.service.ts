@@ -162,15 +162,7 @@ export class RagOrchestratorService {
 
     logRagLatency({ retrievalMs, promptBuildMs });
 
-    const chunkByIndex = new Map(chunks.map((c) => [c.chunkIndex, c]));
-    const sources: ChatSourceDto[] = includedChunkIndices
-      .map((idx) => chunkByIndex.get(idx))
-      .filter((c): c is NonNullable<typeof c> => c != null)
-      .map((c) => ({
-        chunkIndex: c.chunkIndex,
-        score: c.score,
-        snippet: this.makeSnippet(c.content),
-      }));
+    const sources = this.buildSources(chunks, includedChunkIndices);
 
     void this.chatCache.store(
       documentId,
@@ -181,6 +173,36 @@ export class RagOrchestratorService {
       sources,
     );
     return { answer, sources };
+  }
+
+  /**
+   * Marker contract: sources are numbered 1..n in prompt-inclusion order
+   * (includedChunkIndices, assigned AFTER context trimming), matching the
+   * [n] labels the model was shown — so [1] in the answer is sources[0].
+   */
+  private buildSources(
+    chunks: Array<{
+      chunkIndex: number;
+      content: string;
+      score: number;
+      pageStart: number | null;
+      pageEnd: number | null;
+    }>,
+    includedChunkIndices: number[],
+  ): ChatSourceDto[] {
+    const chunkByIndex = new Map(chunks.map((c) => [c.chunkIndex, c]));
+    return includedChunkIndices
+      .map((idx) => chunkByIndex.get(idx))
+      .filter((c): c is NonNullable<typeof c> => c != null)
+      .map((c, i) => ({
+        marker: i + 1,
+        chunkIndex: c.chunkIndex,
+        score: c.score,
+        snippet: this.makeSnippet(c.content),
+        pageStart: c.pageStart,
+        pageEnd: c.pageEnd,
+        quote: c.content.replace(/\s+/g, ' ').trim().slice(0, 150),
+      }));
   }
 
   /** Extract a clean snippet from chunk content (first sentence or first 120 chars). */
@@ -322,17 +344,7 @@ export class RagOrchestratorService {
     } finally {
       // Always send 'done' so the frontend can exit streaming state (stops blinking cursor).
       // If the LLM stream errors or is aborted, we still yield done with the sources we have.
-      const sources: ChatSourceDto[] = (() => {
-        const chunkByIndex = new Map(chunks.map((c) => [c.chunkIndex, c]));
-        return includedChunkIndices
-          .map((idx) => chunkByIndex.get(idx))
-          .filter((c): c is NonNullable<typeof c> => c != null)
-          .map((c) => ({
-            chunkIndex: c.chunkIndex,
-            score: c.score,
-            snippet: this.makeSnippet(c.content),
-          }));
-      })();
+      const sources = this.buildSources(chunks, includedChunkIndices);
       logRagLatency({ retrievalMs, promptBuildMs, llmFirstTokenMs });
       if (!errored && !signal?.aborted && fullAnswer.length > 0) {
         void this.chatCache.store(

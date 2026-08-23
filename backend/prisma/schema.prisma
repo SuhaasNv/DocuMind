@@ -67,6 +67,11 @@ model DocumentChunk {
   // HNSW index this way).
   contentTsv Unsupported("tsvector")? @map("content_tsv")
   chunkIndex Int      @map("chunk_index")
+  // Citation metadata (null for chunks ingested before page-aware chunking).
+  pageStart  Int?     @map("page_start")
+  pageEnd    Int?     @map("page_end")
+  charStart  Int?     @map("char_start")
+  charEnd    Int?     @map("char_end")
   createdAt  DateTime @default(now()) @map("created_at")
   document   Document @relation(fields: [documentId], references: [id], onDelete: Cascade)
 

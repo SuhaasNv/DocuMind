@@ -13,9 +13,16 @@ export interface Document {
 }
 
 export interface ChatSource {
+  /** 1-based citation number matching [n] markers in the answer. */
+  marker?: number;
   chunkIndex: number;
   score: number;
   snippet?: string;
+  /** Source-PDF page range; null for docs ingested before page-aware chunking. */
+  pageStart?: number | null;
+  pageEnd?: number | null;
+  /** ~150-char excerpt for highlight-matching in the PDF viewer. */
+  quote?: string;
 }
 
 export interface Message {

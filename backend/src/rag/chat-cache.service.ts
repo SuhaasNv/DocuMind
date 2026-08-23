@@ -87,11 +87,11 @@ export class ChatCacheService implements OnModuleDestroy {
     settingsKey: string,
     question: string,
   ): string {
-    return `cc:${documentId}:${settingsKey}:${this.hash(normalizeQuestion(question))}`;
+    return `cc2:${documentId}:${settingsKey}:${this.hash(normalizeQuestion(question))}`;
   }
 
   private indexKey(documentId: string): string {
-    return `cc:index:${documentId}`;
+    return `cc2:index:${documentId}`;
   }
 
   private qembKey(question: string): string {
@@ -123,7 +123,7 @@ export class ChatCacheService implements OnModuleDestroy {
     try {
       const keys = (
         await this.client.smembers(this.indexKey(documentId))
-      ).filter((k) => k.startsWith(`cc:${documentId}:${settingsKey}:`));
+      ).filter((k) => k.startsWith(`cc2:${documentId}:${settingsKey}:`));
       if (keys.length === 0) return null;
       const values = await this.client.mget(
         keys.slice(0, MAX_SEMANTIC_ENTRIES),

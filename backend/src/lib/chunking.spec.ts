@@ -34,7 +34,28 @@ describe('chunkText (token-aware recursive)', () => {
   it('text shorter than one chunk returns a single chunk with the full text', () => {
     const text = 'One short sentence.';
     const chunks = chunkText(text);
-    expect(chunks).toEqual([{ content: text, index: 0 }]);
+    expect(chunks).toEqual([
+      { content: text, index: 0, charStart: 0, charEnd: text.length },
+    ]);
+  });
+
+  it('charStart/charEnd point at each chunk own content in the input', () => {
+    const text = makeParagraphs(12, 6);
+    const chunks = chunkText(text, { maxTokens: 120, overlapTokens: 18 });
+    expect(chunks.length).toBeGreaterThan(1);
+    for (const c of chunks) {
+      expect(c.charStart).toBeGreaterThanOrEqual(0);
+      expect(c.charEnd).toBeGreaterThan(c.charStart);
+      const original = text.slice(c.charStart, c.charEnd);
+      // The chunk's own content ends exactly at charEnd...
+      expect(c.content.endsWith(original.slice(-40))).toBe(true);
+      // ...and the text at charStart begins the non-overlap part of the chunk.
+      expect(c.content).toContain(original.slice(0, 40));
+    }
+    // Offsets are monotonically increasing across chunks.
+    for (let i = 1; i < chunks.length; i++) {
+      expect(chunks[i].charStart).toBeGreaterThan(chunks[i - 1].charStart);
+    }
   });
 
   it('normal text: chunks respect the token budget and indices are sequential', () => {

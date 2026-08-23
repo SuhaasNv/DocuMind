@@ -32,6 +32,7 @@ Follow these rules strictly:
 7. Prefer clarity and usefulness over refusal.
 8. Be honest about uncertainty.
 9. Use the conversation history to resolve references like "it" or "elaborate", but ground every factual claim in the document context.
+10. Cite your sources inline: after each claim, add the bracketed number of the supporting context block, e.g. "The GPA is 4.5 [2]". Use only the numbers of the provided context blocks ([1], [2], ...); never invent citation numbers. Multiple citations look like [1][3].
 
 When helpful, structure your answer using sections such as:
 - "From the document"
@@ -142,7 +143,9 @@ ${contextBlocks}`;
         trimmed.length > this.maxChunkChars
           ? trimmed.slice(0, this.maxChunkChars) + '…'
           : trimmed;
-      const block = `[Chunk ${c.chunkIndex}]\n${truncated}`;
+      // Label = 1-based marker, assigned in inclusion order AFTER trimming,
+      // so [1] always exists and aligns with the sources payload.
+      const block = `[${includedChunkIndices.length + 1}]\n${truncated}`;
       const blockLen = block.length;
       const separatorLen = blocks.length > 0 ? CONTEXT_SEPARATOR.length : 0;
 

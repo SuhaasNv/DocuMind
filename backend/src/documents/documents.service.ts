@@ -5,7 +5,7 @@ import {
   BadRequestException,
   Logger,
 } from '@nestjs/common';
-import { mkdir, writeFile, unlink } from 'node:fs/promises';
+import { mkdir, stat, writeFile, unlink } from 'node:fs/promises';
 import path from 'node:path';
 import { DocumentStatus } from '../../generated/prisma/enums.js';
 import type { Document as PrismaDocument } from '../../generated/prisma/client.js';
@@ -97,6 +97,34 @@ export class DocumentsService {
       throw new ForbiddenException('Access denied');
     }
     return this.toResponse(document);
+  }
+
+  /**
+   * Resolve the on-disk PDF path for an owned document.
+   * Throws 404 when the document or its file is missing (e.g. the file was
+   * lost to an ephemeral-disk redeploy) — never exposing filesystem paths.
+   */
+  async getFileForDownload(
+    id: string,
+    userId: string,
+  ): Promise<{ absolutePath: string; name: string }> {
+    const document = await this.prisma.document.findUnique({ where: { id } });
+    if (!document) {
+      throw new NotFoundException('Document not found');
+    }
+    if (document.userId !== userId) {
+      throw new ForbiddenException('Access denied');
+    }
+    if (!document.filePath) {
+      throw new NotFoundException('Original file is no longer available');
+    }
+    const absolutePath = path.join(process.cwd(), document.filePath);
+    try {
+      await stat(absolutePath);
+    } catch {
+      throw new NotFoundException('Original file is no longer available');
+    }
+    return { absolutePath, name: document.name };
   }
 
   async remove(id: string, userId: string): Promise<void> {

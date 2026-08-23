@@ -119,8 +119,33 @@ export class DocumentProcessor extends WorkerHost {
       const { PDFParse } = await import('pdf-parse');
       const parser = new PDFParse({ data: new Uint8Array(buffer) });
       const textResult = await parser.getText();
-      const text = textResult?.text ?? '';
+      // Per-page extraction: build the full text ourselves from page texts so
+      // char offsets map deterministically onto page numbers for citations.
+      const pageTexts: Array<{ num: number; text: string }> =
+        textResult?.pages?.map((pg: { num: number; text: string }) => ({
+          num: pg.num,
+          text: pg.text ?? '',
+        })) ?? [];
       await parser.destroy();
+
+      const PAGE_JOIN = '\n\n';
+      let text = '';
+      const pageBounds: Array<{ start: number; end: number; num: number }> = [];
+      for (const pg of pageTexts) {
+        if (text.length > 0) text += PAGE_JOIN;
+        const start = text.length;
+        text += pg.text;
+        pageBounds.push({ start, end: text.length, num: pg.num });
+      }
+      if (pageTexts.length === 0) text = textResult?.text ?? '';
+      const pageForOffset = (offset: number): number | null => {
+        for (const b of pageBounds) {
+          if (offset >= b.start && offset <= b.end) return b.num;
+        }
+        return pageBounds.length > 0
+          ? pageBounds[pageBounds.length - 1].num
+          : null;
+      };
 
       const textChunks = chunkText(text);
       if (textChunks.length === 0) {
@@ -163,6 +188,10 @@ export class DocumentProcessor extends WorkerHost {
             content: contents[i],
             embedding: embeddings[i],
             chunkIndex: c.index,
+            charStart: c.charStart,
+            charEnd: c.charEnd,
+            pageStart: pageForOffset(c.charStart),
+            pageEnd: pageForOffset(Math.max(c.charStart, c.charEnd - 1)),
           })),
         );
         // One progress write per batch, not per chunk.

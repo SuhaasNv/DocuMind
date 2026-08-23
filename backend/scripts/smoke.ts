@@ -311,6 +311,72 @@ async function main(): Promise<void> {
     );
   }
 
+  // 7b. Citation payload (Phase 7): markers in the answer, page data + quote
+  // in sources.
+  const srcList = (chatBody.sources ?? []) as Array<{
+    marker?: number;
+    pageStart?: number | null;
+    quote?: string;
+  }>;
+  check(
+    'sources carry marker numbers',
+    srcList.length > 0 && srcList.every((s2, i) => s2.marker === i + 1),
+  );
+  check(
+    'sources carry pageStart and quote',
+    srcList.every(
+      (s2) => typeof s2.pageStart === 'number' && (s2.quote ?? '').length > 0,
+    ),
+  );
+  if (!chatBody.answer.startsWith('This is a stub')) {
+    check(
+      'answer contains at least one inline [n] citation marker',
+      /\[\d{1,2}\]/.test(chatBody.answer),
+      chatBody.answer.slice(0, 80),
+    );
+  }
+
+  // 7c. PDF file endpoint: owner gets the PDF (200 + content type + Range),
+  // other users get 403/404 (IDOR on the highest-value leak surface).
+  const fileRes = await fetch(`${BASE}/documents/${doc.id}/file`, {
+    headers: authHeaders(a.accessToken),
+  });
+  check(
+    'GET /documents/:id/file → 200 application/pdf for owner',
+    fileRes.status === 200 &&
+      (fileRes.headers.get('content-type') ?? '').includes('application/pdf'),
+    `status ${fileRes.status}`,
+  );
+  await fileRes.arrayBuffer();
+  const rangeRes = await fetch(`${BASE}/documents/${doc.id}/file`, {
+    headers: { ...authHeaders(a.accessToken), Range: 'bytes=0-99' },
+  });
+  const rangeLen = (await rangeRes.arrayBuffer()).byteLength;
+  check(
+    'Range request → 206 with 100 bytes',
+    rangeRes.status === 206 && rangeLen === 100,
+    `status ${rangeRes.status}, ${rangeLen} bytes`,
+  );
+  const badRange = await fetch(`${BASE}/documents/${doc.id}/file`, {
+    headers: { ...authHeaders(a.accessToken), Range: 'bytes=../../etc/passwd' },
+  });
+  check(
+    'malformed Range rejected safely',
+    badRange.status === 200 || badRange.status === 416,
+    `status ${badRange.status}`,
+  );
+  await badRange.arrayBuffer();
+  const fileIdor = await fetch(`${BASE}/documents/${doc.id}/file`, {
+    headers: authHeaders(b.accessToken),
+  });
+  check(
+    'IDOR: user B cannot fetch A PDF file',
+    fileIdor.status === 403 || fileIdor.status === 404,
+    `status ${fileIdor.status}`,
+  );
+  const fileNoAuth = await fetch(`${BASE}/documents/${doc.id}/file`);
+  check('file endpoint without JWT → 401', fileNoAuth.status === 401);
+
   // 8. Hostile input handled safely
   const hostile = await fetch(`${BASE}/documents/${doc.id}/chat`, {
     method: 'POST',

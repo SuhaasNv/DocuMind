@@ -18,6 +18,8 @@ import {
 } from '@nestjs/common';
 import { Throttle } from '@nestjs/throttler';
 import { FileInterceptor } from '@nestjs/platform-express';
+import { createReadStream } from 'node:fs';
+import { stat } from 'node:fs/promises';
 import { memoryStorage } from 'multer';
 import type { Request, Response } from 'express';
 import { DocumentStatus } from '../../generated/prisma/enums.js';
@@ -104,6 +106,49 @@ export class DocumentsController {
       topK: query.topK,
     });
     return { results };
+  }
+
+  /**
+   * Serve the original PDF for the citation viewer. Ownership-checked;
+   * supports HTTP Range requests (pdf.js issues them). 404 when the file is
+   * gone (ephemeral-disk redeploy) without leaking filesystem paths.
+   */
+  @Get(':id/file')
+  async getFile(
+    @Param('id') id: string,
+    @CurrentUser() user: JwtPayload,
+    @Req() req: Request,
+    @Res({ passthrough: false }) res: Response,
+  ): Promise<void> {
+    const { absolutePath } = await this.documentsService.getFileForDownload(
+      id,
+      user.sub,
+    );
+    const { size } = await stat(absolutePath);
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Accept-Ranges', 'bytes');
+    res.setHeader('Cache-Control', 'private, no-store');
+
+    const range = req.headers.range;
+    if (range) {
+      // Only "bytes=start-end" over the known file — no client-supplied paths.
+      const m = /^bytes=(\d*)-(\d*)$/.exec(range);
+      const start = m && m[1] !== '' ? parseInt(m[1], 10) : 0;
+      const end =
+        m && m[2] !== '' ? Math.min(parseInt(m[2], 10), size - 1) : size - 1;
+      if (!m || start > end || start >= size) {
+        res.status(416).setHeader('Content-Range', `bytes */${size}`);
+        res.end();
+        return;
+      }
+      res.status(206);
+      res.setHeader('Content-Range', `bytes ${start}-${end}/${size}`);
+      res.setHeader('Content-Length', end - start + 1);
+      createReadStream(absolutePath, { start, end }).pipe(res);
+      return;
+    }
+    res.setHeader('Content-Length', size);
+    createReadStream(absolutePath).pipe(res);
   }
 
   @Post(':id/chat')
