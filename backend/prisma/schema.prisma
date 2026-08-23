@@ -24,35 +24,37 @@ enum Role {
 }
 
 model User {
-  id           String    @id @default(cuid())
-  email        String    @unique
-  passwordHash String    @map("password_hash")
+  id           String       @id @default(cuid())
+  email        String       @unique
+  passwordHash String       @map("password_hash")
   name         String
-  role         Role      @default(USER)
-  lastActiveAt DateTime? @map("last_active_at")
-  createdAt    DateTime  @default(now()) @map("created_at")
-  updatedAt    DateTime  @updatedAt @map("updated_at")
+  role         Role         @default(USER)
+  lastActiveAt DateTime?    @map("last_active_at")
+  createdAt    DateTime     @default(now()) @map("created_at")
+  updatedAt    DateTime     @updatedAt @map("updated_at")
   documents    Document[]
   collections  Collection[]
+  insights     Insight[]
 
   @@map("users")
 }
 
 model Document {
-  id         String         @id @default(cuid())
-  userId     String         @map("user_id")
-  name       String
-  status     DocumentStatus @default(PENDING)
-  progress   Int            @default(0)
-  size       Int?           // bytes
-  filePath   String?        @map("file_path") // relative path under uploads dir
-  summary    String?        @db.Text // ~3-sentence LLM summary (instant activation)
-  suggestedQuestions Json?  @map("suggested_questions") // string[] of questions the doc can answer
-  uploadedAt DateTime       @default(now()) @map("uploaded_at")
-  updatedAt  DateTime       @updatedAt @map("updated_at")
-  user       User           @relation(fields: [userId], references: [id], onDelete: Cascade)
-  chunks     DocumentChunk[]
-  collections CollectionDocument[]
+  id                 String               @id @default(cuid())
+  userId             String               @map("user_id")
+  name               String
+  status             DocumentStatus       @default(PENDING)
+  progress           Int                  @default(0)
+  size               Int? // bytes
+  filePath           String?              @map("file_path") // relative path under uploads dir
+  summary            String?              @db.Text // ~3-sentence LLM summary (instant activation)
+  suggestedQuestions Json?                @map("suggested_questions") // string[] of questions the doc can answer
+  uploadedAt         DateTime             @default(now()) @map("uploaded_at")
+  updatedAt          DateTime             @updatedAt @map("updated_at")
+  user               User                 @relation(fields: [userId], references: [id], onDelete: Cascade)
+  chunks             DocumentChunk[]
+  collections        CollectionDocument[]
+  insights           Insight[]
 
   @@index([userId])
   @@map("documents")
@@ -60,24 +62,24 @@ model Document {
 
 // Embedding column is vector(dimension); use raw SQL for insert/query. Dimension from EMBEDDING_DIMENSION env.
 model DocumentChunk {
-  id         String   @id @default(cuid())
-  documentId String   @map("document_id")
-  content    String   @db.Text
+  id         String                       @id @default(cuid())
+  documentId String                       @map("document_id")
+  content    String                       @db.Text
   embedding  Unsupported("vector(1536)")? // dimension from migration; insert via raw SQL
   // Generated column (to_tsvector over content) + GIN index live in raw
   // migrations only. NOTE: `prisma migrate dev` cannot express the HNSW/GIN
   // indexes or the GENERATED clause — review any auto-generated migration
   // before applying so it does not drop them (schema_sync once dropped the
   // HNSW index this way).
-  contentTsv Unsupported("tsvector")? @map("content_tsv")
-  chunkIndex Int      @map("chunk_index")
+  contentTsv Unsupported("tsvector")?     @map("content_tsv")
+  chunkIndex Int                          @map("chunk_index")
   // Citation metadata (null for chunks ingested before page-aware chunking).
-  pageStart  Int?     @map("page_start")
-  pageEnd    Int?     @map("page_end")
-  charStart  Int?     @map("char_start")
-  charEnd    Int?     @map("char_end")
-  createdAt  DateTime @default(now()) @map("created_at")
-  document   Document @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  pageStart  Int?                         @map("page_start")
+  pageEnd    Int?                         @map("page_end")
+  charStart  Int?                         @map("char_start")
+  charEnd    Int?                         @map("char_end")
+  createdAt  DateTime                     @default(now()) @map("created_at")
+  document   Document                     @relation(fields: [documentId], references: [id], onDelete: Cascade)
 
   @@index([documentId])
   @@map("document_chunks")
@@ -85,11 +87,11 @@ model DocumentChunk {
 
 // Phase 9: named groups of a user's documents for cross-document chat.
 model Collection {
-  id        String   @id @default(cuid())
-  userId    String   @map("user_id")
-  name      String   @db.VarChar(120)
-  createdAt DateTime @default(now()) @map("created_at")
-  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  id        String               @id @default(cuid())
+  userId    String               @map("user_id")
+  name      String               @db.VarChar(120)
+  createdAt DateTime             @default(now()) @map("created_at")
+  user      User                 @relation(fields: [userId], references: [id], onDelete: Cascade)
   documents CollectionDocument[]
 
   @@index([userId])
@@ -105,4 +107,32 @@ model CollectionDocument {
   @@id([collectionId, documentId])
   @@index([documentId])
   @@map("collection_documents")
+}
+
+// Knowledge Garden: a pinned chat answer, snapshotting question + answer +
+// sources so the card outlives the conversation (and the document).
+model Insight {
+  id           String                   @id @default(cuid())
+  userId       String                   @map("user_id")
+  question     String                   @db.Text
+  content      String                   @db.Text
+  // Full ChatSourceDto[] snapshot at pin time.
+  sources      Json
+  documentId   String?                  @map("document_id")
+  documentName String?                  @map("document_name")
+  collectionId String?                  @map("collection_id")
+  userNote     String?                  @map("user_note") @db.Text
+  tags         String[]                 @default([])
+  // Generated column (to_tsvector over question || content || userNote) +
+  // GIN index live in raw migrations only. NOTE: `prisma migrate dev` cannot
+  // express the GIN index or the GENERATED clause — review any auto-generated
+  // migration before applying so it does not drop them (schema_sync once
+  // dropped the document_chunks HNSW index this way).
+  searchTsv    Unsupported("tsvector")? @map("search_tsv")
+  createdAt    DateTime                 @default(now()) @map("created_at")
+  user         User                     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  document     Document?                @relation(fields: [documentId], references: [id], onDelete: SetNull)
+
+  @@index([userId])
+  @@map("insights")
 }

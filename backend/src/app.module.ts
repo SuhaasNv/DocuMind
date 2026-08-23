@@ -13,6 +13,7 @@ import { ChunksModule } from './chunks/chunks.module.js';
 import { JwtAuthGuard } from './auth/jwt-auth.guard.js';
 import { HttpExceptionFilter } from './common/filters/http-exception.filter.js';
 import { AdminModule } from './admin/admin.module.js';
+import { InsightsModule } from './insights/insights.module.js';
 
 @Module({
   imports: [
@@ -37,6 +38,7 @@ import { AdminModule } from './admin/admin.module.js';
     DocumentsModule,
     CollectionsModule,
     AdminModule,
+    InsightsModule,
   ],
   providers: [
     { provide: APP_GUARD, useClass: ThrottlerGuard },

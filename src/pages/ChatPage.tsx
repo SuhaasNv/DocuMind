@@ -14,6 +14,9 @@ import { useAppStore, type ChatSource } from '@/stores/useAppStore';
 import { usePreferencesStore } from '@/stores/usePreferencesStore';
 import { sendChatMessage, stopChatStream } from '@/lib/chatStream';
 import { fetchCollection } from '@/lib/collections';
+import { createInsight } from '@/lib/insights';
+import { getApiErrorMessage } from '@/lib/api';
+import { toast } from 'sonner';
 
 const SCROLL_THRESHOLD_PX = 120;
 
@@ -146,6 +149,44 @@ const ChatPage = () => {
     setTimeout(() => handleSendMessage(lastUserMsg.content), 0);
   }, [chatKey, removeLastMessages, handleSendMessage]);
 
+  /**
+   * Pins an assistant answer to the Knowledge Garden: snapshots the preceding
+   * user question, the answer, and its full sources so the card outlives the
+   * chat. Collection chats pin without a single owning document — each source
+   * entry carries its own documentId/documentName.
+   */
+  const handlePin = useCallback(
+    async (messageId: string) => {
+      if (!chatKey) return;
+      const state = useAppStore.getState();
+      const msgs = state.conversations[chatKey]?.messages ?? [];
+      const idx = msgs.findIndex((m) => m.id === messageId);
+      if (idx === -1) return;
+      const msg = msgs[idx];
+      const question =
+        msgs
+          .slice(0, idx)
+          .reverse()
+          .find((m) => m.role === 'user')?.content ?? '';
+      try {
+        await createInsight({
+          question: question || 'Pinned answer',
+          content: msg.content,
+          sources: msg.sources ?? [],
+          documentId: collectionId ? undefined : documentId,
+          documentName: collectionId
+            ? undefined
+            : state.documents.find((d) => d.id === documentId)?.name,
+        });
+        toast.success('Pinned to your Knowledge Garden');
+      } catch (err) {
+        toast.error(getApiErrorMessage(err, 'Failed to pin insight'));
+        throw err;
+      }
+    },
+    [chatKey, collectionId, documentId]
+  );
+
   if (!target) {
     return (
       <>
@@ -257,6 +298,11 @@ const ChatPage = () => {
                       message={message}
                       onRegenerate={isLastAssistant && !isStreaming ? handleRegenerate : undefined}
                       onOpenSource={setViewerSource}
+                      onPin={
+                        message.role === 'assistant' && !message.isStreaming && !message.isError
+                          ? () => handlePin(message.id)
+                          : undefined
+                      }
                     />
                   );
                 })}

@@ -16,6 +16,7 @@ import TermsPage from "./pages/TermsPage";
 import ContactPage from "./pages/ContactPage";
 import Dashboard from "./pages/Dashboard";
 import ChatPage from "./pages/ChatPage";
+import GardenPage from "./pages/GardenPage";
 import SettingsPage from "./pages/SettingsPage";
 import NotFound from "./pages/NotFound";
 import AppLayout from "./components/app/AppLayout";
@@ -68,6 +69,9 @@ const App = () => (
           </Route>
           <Route path="/collection/:collectionId/chat" element={<ProtectedRoute><AppLayout /></ProtectedRoute>}>
             <Route index element={<ChatPage />} />
+          </Route>
+          <Route path="/garden" element={<ProtectedRoute><AppLayout /></ProtectedRoute>}>
+            <Route index element={<GardenPage />} />
           </Route>
 
           {/* Catch-all */}

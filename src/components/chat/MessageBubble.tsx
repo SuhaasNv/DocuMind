@@ -2,11 +2,18 @@ import { memo, useState, useEffect, useRef, useCallback } from 'react';
 import { cn } from '@/lib/utils';
 import { Message, type ChatSource } from '@/stores/useAppStore';
 import { usePreferencesStore } from '@/stores/usePreferencesStore';
-import { Bot, User, Copy, Check, RefreshCw, RotateCcw, AlertCircle } from 'lucide-react';
+import { Bot, User, Copy, Check, RefreshCw, RotateCcw, AlertCircle, Pin } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import { motion } from 'framer-motion';
 import { Button } from '@/components/ui/button';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
+import {
+  chatMarkdownComponents,
+  citationIndex,
+  linkifyCitations,
+  makeCiteAnchor,
+  pageLabel,
+} from './markdownComponents';
 
 const TYPING_MS_PER_CHAR = 22;
 const TYPING_CHARS_PER_TICK = 2;
@@ -20,9 +27,11 @@ interface MessageBubbleProps {
   onRegenerate?: () => void;
   /** Opens the citation PDF viewer for a source. */
   onOpenSource?: (source: ChatSource) => void;
+  /** Pins this answer to the Knowledge Garden. Shown for completed AI messages. */
+  onPin?: () => Promise<void>;
 }
 
-const MessageBubble = memo(function MessageBubble({ message, onRegenerate, onOpenSource }: MessageBubbleProps) {
+const MessageBubble = memo(function MessageBubble({ message, onRegenerate, onOpenSource, onPin }: MessageBubbleProps) {
   const isUser = message.role === 'user';
   const showSourcesUnderAnswers = usePreferencesStore((s) => s.showSourcesUnderAnswers);
   const enableAnimations = usePreferencesStore((s) => s.enableAnimations);
@@ -30,6 +39,8 @@ const MessageBubble = memo(function MessageBubble({ message, onRegenerate, onOpe
 
   const [visibleLength, setVisibleLength] = useState(0);
   const [copied, setCopied] = useState(false);
+  const [pinned, setPinned] = useState(false);
+  const [pinning, setPinning] = useState(false);
   const typewriterIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const contentLengthRef = useRef(message.content.length);
   const prevMessageIdRef = useRef(message.id);
@@ -43,13 +54,8 @@ const MessageBubble = memo(function MessageBubble({ message, onRegenerate, onOpe
 
   const showSources = !isUser && showSourcesUnderAnswers && message.sources && message.sources.length > 0;
   // Marker order ([1], [2], ...) so cards match the inline citations.
-  const sortedSources = showSources
-    ? [...message.sources!].sort(
-        (a, b) => (a.marker ?? a.chunkIndex + 1) - (b.marker ?? b.chunkIndex + 1),
-      )
-    : [];
-  const sourceByMarker = new Map(
-    sortedSources.map((src, i) => [src.marker ?? i + 1, src]),
+  const { sorted: sortedSources, byMarker: sourceByMarker } = citationIndex(
+    showSources ? message.sources! : [],
   );
 
   // Inline [n] markers: turn known citation numbers into internal #cite links
@@ -57,12 +63,7 @@ const MessageBubble = memo(function MessageBubble({ message, onRegenerate, onOpe
   // hidden, markers are stripped entirely.
   const displayContent = isUser
     ? message.content
-    : message.content.replace(/\[(\d{1,2})\](?!\()/g, (full, num: string) => {
-        const n = parseInt(num, 10);
-        if (!sourceByMarker.has(n)) return full;
-        if (!showSourcesUnderAnswers) return '';
-        return `[${n}](#cite-${n})`;
-      });
+    : linkifyCitations(message.content, sourceByMarker, showSourcesUnderAnswers);
 
   const flashCard = (marker: number) => {
     const el = document.getElementById(`cite-card-${message.id}-${marker}`);
@@ -135,6 +136,19 @@ const MessageBubble = memo(function MessageBubble({ message, onRegenerate, onOpe
     }
   }, [message.content]);
 
+  const handlePin = useCallback(async () => {
+    if (!onPin || pinning || pinned) return;
+    setPinning(true);
+    try {
+      await onPin();
+      setPinned(true);
+    } catch {
+      // Error toast is shown by the onPin handler
+    } finally {
+      setPinning(false);
+    }
+  }, [onPin, pinning, pinned]);
+
   const Wrapper = enableAnimations ? motion.div : 'div';
   const wrapperProps = enableAnimations
     ? { initial: { opacity: 0, y: 10 }, animate: { opacity: 1, y: 0 }, transition: { duration: 0.3 } }
@@ -190,58 +204,8 @@ const MessageBubble = memo(function MessageBubble({ message, onRegenerate, onOpe
             ) : (
               <ReactMarkdown
                 components={{
-                  a: ({ href, children, ...props }) => {
-                    const cite = href?.startsWith('#cite-')
-                      ? parseInt(href.slice(6), 10)
-                      : NaN;
-                    if (!Number.isNaN(cite) && sourceByMarker.has(cite)) {
-                      return (
-                        <button
-                          type="button"
-                          onClick={() => flashCard(cite)}
-                          className="cite-chip"
-                          aria-label={`Show source ${cite}`}
-                        >
-                          {cite}
-                        </button>
-                      );
-                    }
-                    return (
-                      <a href={href} target="_blank" rel="noreferrer" {...props}>
-                        {children}
-                      </a>
-                    );
-                  },
-                  code: ({ className, children, ...props }) => {
-                    const match = /language-(\w+)/.exec(className || '');
-                    const isInline = !match;
-                    return isInline ? (
-                      <code
-                        className="px-1.5 py-0.5 rounded bg-muted text-primary text-sm font-mono"
-                        {...props}
-                      >
-                        {children}
-                      </code>
-                    ) : (
-                      <pre className="bg-muted/50 rounded-lg p-4 overflow-x-auto my-3">
-                        <code className="text-sm font-mono text-foreground" {...props}>
-                          {children}
-                        </code>
-                      </pre>
-                    );
-                  },
-                  p: ({ children }) => <p className="mb-2 last:mb-0">{children}</p>,
-                  ul: ({ children }) => <ul className="list-disc pl-4 mb-2">{children}</ul>,
-                  ol: ({ children }) => <ol className="list-decimal pl-4 mb-2">{children}</ol>,
-                  li: ({ children }) => <li className="mb-1">{children}</li>,
-                  h1: ({ children }) => <h1 className="text-lg font-bold mb-2">{children}</h1>,
-                  h2: ({ children }) => <h2 className="text-base font-bold mb-2">{children}</h2>,
-                  h3: ({ children }) => <h3 className="text-sm font-bold mb-1">{children}</h3>,
-                  blockquote: ({ children }) => (
-                    <blockquote className="border-l-2 border-primary pl-4 italic text-muted-foreground">
-                      {children}
-                    </blockquote>
-                  ),
+                  ...chatMarkdownComponents,
+                  a: makeCiteAnchor({ sourceByMarker, onChipClick: flashCard }),
                 }}
               >
                 {displayContent}
@@ -277,11 +241,7 @@ const MessageBubble = memo(function MessageBubble({ message, onRegenerate, onOpe
                           </span>
                         )}
                         <span className="block text-[10px] font-medium text-foreground/70 mb-0.5">
-                          {src.pageStart != null
-                            ? src.pageStart === src.pageEnd || src.pageEnd == null
-                              ? `Page ${src.pageStart}`
-                              : `Pages ${src.pageStart}-${src.pageEnd}`
-                            : 'Page unknown. Reprocess for precise citations'}
+                          {pageLabel(src)}
                         </span>
                         <span className="block text-muted-foreground leading-relaxed line-clamp-2">
                           {cleaned || `Passage ${src.chunkIndex + 1}`}
@@ -330,6 +290,33 @@ const MessageBubble = memo(function MessageBubble({ message, onRegenerate, onOpe
               </TooltipTrigger>
               <TooltipContent side="bottom">{copied ? 'Copied!' : 'Copy'}</TooltipContent>
             </Tooltip>
+
+            {/* Pin to Knowledge Garden */}
+            {onPin && !isError && (
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className={cn(
+                      'h-7 w-7 text-muted-foreground hover:text-foreground',
+                      pinned && 'text-primary hover:text-primary',
+                    )}
+                    onClick={handlePin}
+                    disabled={pinning || pinned}
+                    aria-label={pinned ? 'Pinned to garden' : 'Pin to garden'}
+                  >
+                    <Pin
+                      className={cn('w-3.5 h-3.5', pinned && 'fill-current')}
+                      aria-hidden="true"
+                    />
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent side="bottom">
+                  {pinned ? 'Pinned to garden' : 'Pin to garden'}
+                </TooltipContent>
+              </Tooltip>
+            )}
 
             {/* Regenerate / Retry */}
             {onRegenerate && (

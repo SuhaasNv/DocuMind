@@ -10,7 +10,9 @@ const BASE = process.argv[2] ?? 'http://localhost:3000';
 
 let failures = 0;
 function check(name: string, ok: boolean, detail = ''): void {
-  console.log(`[${ok ? 'PASS' : 'FAIL'}] ${name}${detail ? ` — ${detail}` : ''}`);
+  console.log(
+    `[${ok ? 'PASS' : 'FAIL'}] ${name}${detail ? ` — ${detail}` : ''}`,
+  );
   if (!ok) failures++;
 }
 
@@ -37,7 +39,10 @@ async function auth(): Promise<string> {
 
 function pdf(fact: string): Buffer {
   const esc = (s: string) => s.replace(/[\\()]/g, (c) => `\\${c}`);
-  const lines = Array.from({ length: 30 }, (_, i) => `(${esc(`Line ${i + 1}: ${fact}`)}) Tj T*`).join('\n');
+  const lines = Array.from(
+    { length: 30 },
+    (_, i) => `(${esc(`Line ${i + 1}: ${fact}`)}) Tj T*`,
+  ).join('\n');
   const stream = `BT /F1 10 Tf 40 780 Td 12 TL\n${lines}\nET`;
   const objs = [
     '',
@@ -55,14 +60,23 @@ function pdf(fact: string): Buffer {
   }
   const xrefStart = Buffer.byteLength(body);
   let xref = `xref\n0 ${objs.length}\n0000000000 65535 f \n`;
-  for (let i = 1; i < objs.length; i++) xref += `${String(offsets[i]).padStart(10, '0')} 00000 n \n`;
+  for (let i = 1; i < objs.length; i++)
+    xref += `${String(offsets[i]).padStart(10, '0')} 00000 n \n`;
   body += `${xref}trailer\n<< /Size ${objs.length} /Root 1 0 R >>\nstartxref\n${xrefStart}\n%%EOF\n`;
   return Buffer.from(body, 'latin1');
 }
 
-async function upload(token: string, name: string, fact: string): Promise<string> {
+async function upload(
+  token: string,
+  name: string,
+  fact: string,
+): Promise<string> {
   const form = new FormData();
-  form.append('file', new Blob([new Uint8Array(pdf(fact))], { type: 'application/pdf' }), name);
+  form.append(
+    'file',
+    new Blob([new Uint8Array(pdf(fact))], { type: 'application/pdf' }),
+    name,
+  );
   const res = await fetch(`${BASE}/documents/upload`, {
     method: 'POST',
     headers: { Authorization: `Bearer ${token}` },
@@ -73,18 +87,28 @@ async function upload(token: string, name: string, fact: string): Promise<string
   const t0 = Date.now();
   let status = doc.status;
   while (status !== 'DONE') {
-    if (status === 'FAILED' || Date.now() - t0 > 120000) throw new Error(`ingest ${status}`);
+    if (status === 'FAILED' || Date.now() - t0 > 120000)
+      throw new Error(`ingest ${status}`);
     await new Promise((r) => setTimeout(r, 1500));
-    const p = await fetch(`${BASE}/documents/${doc.id}`, { headers: { Authorization: `Bearer ${token}` } });
+    const p = await fetch(`${BASE}/documents/${doc.id}`, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
     status = ((await p.json()) as { status: string }).status;
   }
   return doc.id;
 }
 
-async function chat(token: string, path: string, question: string): Promise<ChatResponse> {
+async function chat(
+  token: string,
+  path: string,
+  question: string,
+): Promise<ChatResponse> {
   const res = await fetch(`${BASE}${path}`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${token}`,
+    },
     body: JSON.stringify({ question }),
   });
   if (!res.ok) throw new Error(`chat ${path} ${res.status}`);
@@ -93,12 +117,23 @@ async function chat(token: string, path: string, question: string): Promise<Chat
 
 async function main(): Promise<void> {
   const token = await auth();
-  const docA = await upload(token, 'trap-a.pdf', 'The Alpha budget is 7 million dollars.');
-  const docB = await upload(token, 'trap-b.pdf', 'The Beta deadline is 14 October 2026.');
+  const docA = await upload(
+    token,
+    'trap-a.pdf',
+    'The Alpha budget is 7 million dollars.',
+  );
+  const docB = await upload(
+    token,
+    'trap-b.pdf',
+    'The Beta deadline is 14 October 2026.',
+  );
 
   const colRes = await fetch(`${BASE}/collections`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${token}`,
+    },
     body: JSON.stringify({ name: 'cache-trap' }),
   });
   if (!colRes.ok) throw new Error(`collection create ${colRes.status}`);
@@ -106,7 +141,10 @@ async function main(): Promise<void> {
   for (const d of [docA, docB]) {
     const add = await fetch(`${BASE}/collections/${colId}/documents`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${token}`,
+      },
       body: JSON.stringify({ documentId: d }),
     });
     if (!add.ok) throw new Error(`add doc ${add.status}`);
@@ -118,7 +156,10 @@ async function main(): Promise<void> {
   const col1 = await chat(token, `/collections/${colId}/chat`, q);
   check('collection first ask is a live answer', col1.cached !== true);
   const doc1 = await chat(token, `/documents/${docA}/chat`, q);
-  check('document ask after collection ask is NOT served from collection scope', doc1.cached !== true);
+  check(
+    'document ask after collection ask is NOT served from collection scope',
+    doc1.cached !== true,
+  );
   const col2 = await chat(token, `/collections/${colId}/chat`, q);
   check('collection repeat IS cached in its own scope', col2.cached === true);
   const doc2 = await chat(token, `/documents/${docA}/chat`, q);
@@ -138,12 +179,22 @@ async function main(): Promise<void> {
   );
 
   // Cleanup.
-  await fetch(`${BASE}/collections/${colId}`, { method: 'DELETE', headers: { Authorization: `Bearer ${token}` } });
+  await fetch(`${BASE}/collections/${colId}`, {
+    method: 'DELETE',
+    headers: { Authorization: `Bearer ${token}` },
+  });
   for (const d of [docA, docB]) {
-    await fetch(`${BASE}/documents/${d}`, { method: 'DELETE', headers: { Authorization: `Bearer ${token}` } });
+    await fetch(`${BASE}/documents/${d}`, {
+      method: 'DELETE',
+      headers: { Authorization: `Bearer ${token}` },
+    });
   }
 
-  console.log(failures === 0 ? '\nCACHE TRAPS PASSED' : `\nCACHE TRAPS FAILED (${failures})`);
+  console.log(
+    failures === 0
+      ? '\nCACHE TRAPS PASSED'
+      : `\nCACHE TRAPS FAILED (${failures})`,
+  );
   process.exit(failures === 0 ? 0 : 1);
 }
 

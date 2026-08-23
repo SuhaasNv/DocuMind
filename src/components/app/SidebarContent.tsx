@@ -9,6 +9,7 @@ import {
   Plus,
   Trash2,
   ShieldAlert,
+  Sprout,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
@@ -87,6 +88,7 @@ const SidebarContent = ({ isExpanded, onLinkClick, isMobileSheet = false, showLo
   // Normal user nav
   const userNavItems = [
     { icon: LayoutDashboard, label: 'Documents', path: '/app' },
+    { icon: Sprout, label: 'Garden', path: '/garden' },
     { icon: Settings, label: 'Settings', path: '/app/settings' },
   ];
   if (user?.role === 'ADMIN') {
