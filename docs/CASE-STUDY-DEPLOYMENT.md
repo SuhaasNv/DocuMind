@@ -1,5 +1,7 @@
 # Case Study: Deploying DocuMind (Insight Garden) to Production
 
+> **Superseded (2026):** This case study describes the original Vercel + Supabase + Upstash deployment. The app has since migrated to an all-Railway stack (frontend, backend, PostgreSQL + pgvector, Redis) — see the README for the current setup. Kept as a historical record.
+
 **Document:** Deployment case study  
 **Scope:** Full-stack deployment (frontend, backend, database, Redis) with Vercel, Railway, Supabase, and Upstash  
 **Outcome:** Production app with auth, document upload, async processing, and RAG chat

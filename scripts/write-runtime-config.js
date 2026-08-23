@@ -1,6 +1,6 @@
 /**
  * Writes public/runtime-config.json from VITE_API_URL at build time.
- * Vercel (and other hosts) can set VITE_API_URL; this file is then served and
+ * The host (e.g. Railway build arg) can set VITE_API_URL; this file is then served and
  * loaded at runtime so the frontend uses the correct backend URL even when
  * Vite's import.meta.env doesn't get the variable.
  */

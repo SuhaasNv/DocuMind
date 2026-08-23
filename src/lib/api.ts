@@ -3,7 +3,7 @@
  * All fetch/SSE calls must use getApiBaseUrl() so frontend–backend connectivity is consistent.
  *
  * Sources (first wins): runtime config (from /runtime-config.json), then VITE_API_URL at build.
- * Runtime config is written at build from VITE_API_URL so Vercel/production always get the right URL.
+ * Runtime config is written at build from VITE_API_URL so production always gets the right URL.
  */
 const env = (import.meta as unknown as { env: { VITE_API_URL?: string; VITE_APP_VERSION?: string; MODE?: string } }).env;
 

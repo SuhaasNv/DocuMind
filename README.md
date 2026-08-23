@@ -9,7 +9,7 @@
 [![PostgreSQL](https://img.shields.io/badge/PostgreSQL-pgvector-4169E1?logo=postgresql)](https://www.postgresql.org/)
 [![Redis](https://img.shields.io/badge/Redis-7-DC382D?logo=redis)](https://redis.io/)
 
-**Production stack:** Frontend → [Vercel](https://vercel.com/) · Backend → [Railway](https://railway.app/) · Database → [Supabase](https://supabase.com/) · Redis → [Upstash](https://upstash.com/) · LLM → [Google Gemini](https://ai.google.dev/)
+**Production stack:** All on [Railway](https://railway.app/) — Frontend (nginx static) · Backend (NestJS) · PostgreSQL + pgvector · Redis · LLM → [OpenAI](https://platform.openai.com/)
 
 ---
 
@@ -114,10 +114,10 @@
 
 | Component | Local | Production |
 |-----------|-------|------------|
-| **Frontend** | Vite dev server (port 8080) | [Vercel](https://vercel.com/) |
+| **Frontend** | Vite dev server (port 8080) | [Railway](https://railway.app/) (nginx static container) |
 | **Backend** | NestJS (port 3000) | [Railway](https://railway.app/) |
-| **Database** | PostgreSQL 16 + pgvector (Docker) | [Supabase](https://supabase.com/) |
-| **Cache/Queue** | Redis 7 (Docker) | [Upstash](https://upstash.com/) |
+| **Database** | Railway PostgreSQL 16 + pgvector | [Railway](https://railway.app/) (pgvector/pgvector:pg16) |
+| **Cache/Queue** | Railway Redis (public TCP proxy) | [Railway](https://railway.app/) Redis |
 
 ---
 
@@ -323,12 +323,12 @@ insight-garden/
 
 ## Deployment
 
-**Production:** Frontend on Vercel, Backend on Railway, Database on Supabase, Redis on Upstash.
+**Production:** Everything runs on Railway — frontend, backend, PostgreSQL (pgvector), and Redis in one project.
 
-1. **Database** — Create Supabase project, copy connection string, add `?sslmode=require`, run `npx prisma migrate deploy`
-2. **Redis** — Create Upstash Redis, copy `REDIS_URL`
-3. **Backend** — Deploy to Railway, set `DATABASE_URL`, `JWT_SECRET`, `CORS_ORIGIN`, `REDIS_URL`, `GEMINI_API_KEY`
-4. **Frontend** — Deploy to Vercel, set `VITE_API_URL` to your Railway backend URL
+1. **Database** — Add a Railway service from the `pgvector/pgvector:pg16` image with a volume; migrations run automatically on backend deploy (`prisma migrate deploy`)
+2. **Redis** — Add Railway's Redis database; the backend reads `REDIS_URL`
+3. **Backend** — Deploy `backend/` (Dockerfile, see `backend/railway.toml`); set `DATABASE_URL`, `JWT_SECRET`, `CORS_ORIGIN`, `REDIS_URL`, `LLM_PROVIDER`, `OPENAI_API_KEY`
+4. **Frontend** — Deploy the repo root Dockerfile (nginx static); set the `VITE_API_URL` build arg to the backend's public URL
 
 See [docs/CASE-STUDY-DEPLOYMENT.md](docs/CASE-STUDY-DEPLOYMENT.md) for a full deployment walkthrough.
 
@@ -338,7 +338,7 @@ See [docs/CASE-STUDY-DEPLOYMENT.md](docs/CASE-STUDY-DEPLOYMENT.md) for a full de
 
 | Document | Description |
 |----------|-------------|
-| [docs/CASE-STUDY-DEPLOYMENT.md](docs/CASE-STUDY-DEPLOYMENT.md) | Production deployment with Vercel, Railway, Supabase, Upstash |
+| [docs/CASE-STUDY-DEPLOYMENT.md](docs/CASE-STUDY-DEPLOYMENT.md) | Historical deployment case study (pre-Railway migration) |
 | [docs/LOCAL-DEV-SANITY-CHECKLIST.md](docs/LOCAL-DEV-SANITY-CHECKLIST.md) | Step-by-step local dev verification |
 | [docs/TECHNICAL-AUDIT.md](docs/TECHNICAL-AUDIT.md) | Technical audit and architecture notes |
 | [CONTRIBUTING.md](CONTRIBUTING.md) | Contribution guidelines |
