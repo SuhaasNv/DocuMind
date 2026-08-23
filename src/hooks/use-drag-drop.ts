@@ -1,61 +1,21 @@
-import { useRef, useEffect, useCallback } from 'react';
+import { useRef, useEffect } from 'react';
 import { useLocation } from 'react-router-dom';
 import { useAppStore } from '@/stores/useAppStore';
 import { getApiBaseUrl } from '@/lib/api';
+import {
+    toStoreDocument,
+    useInvalidateDocuments,
+    type ApiDocument,
+} from '@/hooks/useDocumentsQuery';
 
 const VALID_FILE_TYPES = ['application/pdf'];
-const POLL_INTERVAL_MS = 2000;
-
-interface ApiDocument {
-    id: string;
-    name: string;
-    uploadedAt: string;
-    status: 'PENDING' | 'PROCESSING' | 'DONE' | 'FAILED';
-    progress: number;
-    size?: number;
-    summary?: string | null;
-    suggestedQuestions?: string[] | null;
-}
 
 export const useDragDrop = () => {
     const { pathname } = useLocation();
-    const { addDocument, setUploading, accessToken, updateDocument } = useAppStore();
+    const { addDocument, setUploading, accessToken } = useAppStore();
+    const invalidateDocuments = useInvalidateDocuments();
     const dragCounter = useRef(0);
     const overlayRef = useRef<HTMLDivElement>(null);
-    const pollRef = useRef<Record<string, ReturnType<typeof setInterval>>>({});
-
-    const pollDocumentStatus = useCallback((docId: string) => {
-        if (pollRef.current[docId]) return;
-        const token = useAppStore.getState().accessToken;
-        if (!token) return;
-
-        const poll = async () => {
-            try {
-                const res = await fetch(`${getApiBaseUrl()}/documents/${docId}`, {
-                    headers: { Authorization: `Bearer ${token}` },
-                });
-                if (!res.ok) return;
-                const data = (await res.json()) as ApiDocument;
-                useAppStore.getState().updateDocument(docId, {
-                    status: data.status,
-                    progress: data.progress,
-                    summary: data.summary ?? null,
-                    suggestedQuestions: data.suggestedQuestions ?? null,
-                });
-                if (data.status === 'DONE' || data.status === 'FAILED') {
-                    if (pollRef.current[docId]) {
-                        clearInterval(pollRef.current[docId]);
-                        delete pollRef.current[docId];
-                    }
-                }
-            } catch {
-                // ignore network errors; will retry next interval
-            }
-        };
-
-        poll();
-        pollRef.current[docId] = setInterval(poll, POLL_INTERVAL_MS);
-    }, []);
 
     const handleDragEnter = (e: DragEvent) => {
         if (pathname.startsWith('/app/admin')) return;
@@ -129,18 +89,8 @@ export const useDragDrop = () => {
                 });
 
                 if (res.ok) {
-                    const data = await res.json();
-                    addDocument({
-                        id: data.id,
-                        name: data.name,
-                        uploadedAt: new Date(data.uploadedAt),
-                        status: data.status,
-                        progress: data.progress,
-                        size: data.size,
-                    });
-
-                    // Start polling!
-                    pollDocumentStatus(data.id);
+                    const data = (await res.json()) as ApiDocument;
+                    addDocument(toStoreDocument(data));
                 }
 
             } catch (error) {
@@ -148,6 +98,8 @@ export const useDragDrop = () => {
             }
         }
         setUploading(false);
+        // The documents query is the one poller; it picks up processing status.
+        invalidateDocuments();
     };
 
     useEffect(() => {
@@ -161,12 +113,8 @@ export const useDragDrop = () => {
             window.removeEventListener('dragleave', handleDragLeave);
             window.removeEventListener('dragover', handleDragOver);
             window.removeEventListener('drop', handleDrop);
-
-            // Clean up intervals
-            Object.values(pollRef.current).forEach(clearInterval);
-            pollRef.current = {};
         };
-    }, [pollDocumentStatus]);
+    });
 
     return { overlayRef };
 };

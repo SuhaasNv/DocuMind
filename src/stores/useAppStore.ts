@@ -183,7 +183,25 @@ export const useAppStore = create<AppState>()(
             };
           }
         }
-        return { documents, conversations };
+        // Preserve "document processed" notifications now that status updates
+        // arrive via the documents query sync instead of updateDocument.
+        let notifications = state.notifications;
+        for (const doc of documents) {
+          const prev = state.documents.find((d) => d.id === doc.id);
+          if (doc.status === 'DONE' && prev && prev.status !== 'DONE') {
+            notifications = [
+              {
+                id: `notif-${doc.id}-${Date.now()}`,
+                documentId: doc.id,
+                documentName: doc.name,
+                read: false,
+                createdAt: Date.now(),
+              },
+              ...notifications,
+            ];
+          }
+        }
+        return { documents, conversations, notifications };
       }),
 
       addDocument: (doc) => set((state) => ({

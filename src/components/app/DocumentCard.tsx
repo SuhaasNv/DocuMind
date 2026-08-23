@@ -16,7 +16,9 @@ import {
 } from '@/components/ui/alert-dialog';
 import { Document, DocumentStatus, useAppStore } from '@/stores/useAppStore';
 import { getApiBaseUrl } from '@/lib/api';
+import { useInvalidateDocuments } from '@/hooks/useDocumentsQuery';
 import { formatDistanceToNow } from 'date-fns';
+import { toast } from 'sonner';
 
 interface DocumentCardProps {
   document: Document;
@@ -52,6 +54,7 @@ const statusConfig: Record<DocumentStatus, {
 const DocumentCard = ({ document }: DocumentCardProps) => {
   const removeDocument = useAppStore((state) => state.removeDocument);
   const accessToken = useAppStore((state) => state.accessToken);
+  const invalidateDocuments = useInvalidateDocuments();
   const status = statusConfig[document.status];
   const StatusIcon = status.icon;
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
@@ -62,19 +65,23 @@ const DocumentCard = ({ document }: DocumentCardProps) => {
     setShowDeleteConfirm(true);
   };
 
+  // Only remove the card after the backend confirms the delete (2xx).
   const handleConfirmDelete = async () => {
     setShowDeleteConfirm(false);
-    if (accessToken) {
-      try {
-        await fetch(`${getApiBaseUrl()}/documents/${document.id}`, {
-          method: 'DELETE',
-          headers: { Authorization: `Bearer ${accessToken}` },
-        });
-      } catch {
-        // Remove from UI anyway; backend may be unreachable
-      }
+    try {
+      if (!accessToken) throw new Error('Not authenticated');
+      const res = await fetch(`${getApiBaseUrl()}/documents/${document.id}`, {
+        method: 'DELETE',
+        headers: { Authorization: `Bearer ${accessToken}` },
+      });
+      if (!res.ok) throw new Error(`Delete failed (${res.status})`);
+      removeDocument(document.id);
+      invalidateDocuments();
+    } catch (err) {
+      toast.error('Failed to delete document', {
+        description: err instanceof Error ? err.message : 'Please try again.',
+      });
     }
-    removeDocument(document.id);
   };
 
   return (
@@ -164,6 +171,9 @@ const DocumentCard = ({ document }: DocumentCardProps) => {
                       useAppStore.getState().updateDocument(document.id, {
                         status: 'FAILED',
                       });
+                    } else {
+                      // Restart the documents query poller for the new PENDING doc.
+                      invalidateDocuments();
                     }
                   } catch {
                     // Revert on failure

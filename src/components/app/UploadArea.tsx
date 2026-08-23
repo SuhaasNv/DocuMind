@@ -1,31 +1,21 @@
-import { useState, useCallback, useRef, useEffect } from 'react';
+import { useState, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Upload, FileText, X, AlertCircle } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 import { useAppStore } from '@/stores/useAppStore';
 import { getApiBaseUrl } from '@/lib/api';
-import type { Document } from '@/stores/useAppStore';
-
-/** Backend document response shape (matches DocumentResponseDto). */
-interface ApiDocument {
-  id: string;
-  name: string;
-  uploadedAt: string;
-  status: 'PENDING' | 'PROCESSING' | 'DONE' | 'FAILED';
-  progress: number;
-  size?: number;
-  summary?: string | null;
-  suggestedQuestions?: string[] | null;
-}
-
-const POLL_INTERVAL_MS = 2000;
+import {
+  toStoreDocument,
+  useInvalidateDocuments,
+  type ApiDocument,
+} from '@/hooks/useDocumentsQuery';
 
 const UploadArea = () => {
   const [isDragOver, setIsDragOver] = useState(false);
   const [uploadError, setUploadError] = useState<string | null>(null);
-  const { addDocument, updateDocument, setUploading, isUploading, accessToken } = useAppStore();
-  const pollRef = useRef<Record<string, ReturnType<typeof setInterval>>>({});
+  const { addDocument, setUploading, isUploading, accessToken } = useAppStore();
+  const invalidateDocuments = useInvalidateDocuments();
 
   const handleDragOver = useCallback((e: React.DragEvent) => {
     e.preventDefault();
@@ -47,48 +37,6 @@ const UploadArea = () => {
   const handleFileInput = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
     const files = Array.from(e.target.files || []);
     handleFiles(files);
-  }, []);
-
-  const toStoreDocument = (d: ApiDocument): Document => ({
-    id: d.id,
-    name: d.name,
-    uploadedAt: new Date(d.uploadedAt),
-    status: d.status,
-    progress: d.progress,
-    size: d.size,
-  });
-
-  const pollDocumentStatus = useCallback((docId: string) => {
-    if (pollRef.current[docId]) return;
-    const token = useAppStore.getState().accessToken;
-    if (!token) return;
-
-    const poll = async () => {
-      try {
-        const res = await fetch(`${getApiBaseUrl()}/documents/${docId}`, {
-          headers: { Authorization: `Bearer ${token}` },
-        });
-        if (!res.ok) return;
-        const data = (await res.json()) as ApiDocument;
-        useAppStore.getState().updateDocument(docId, {
-          status: data.status,
-          progress: data.progress,
-          summary: data.summary ?? null,
-          suggestedQuestions: data.suggestedQuestions ?? null,
-        });
-        if (data.status === 'DONE' || data.status === 'FAILED') {
-          if (pollRef.current[docId]) {
-            clearInterval(pollRef.current[docId]);
-            delete pollRef.current[docId];
-          }
-        }
-      } catch {
-        // ignore network errors; will retry next interval
-      }
-    };
-
-    poll();
-    pollRef.current[docId] = setInterval(poll, POLL_INTERVAL_MS);
   }, []);
 
   const handleFiles = useCallback(
@@ -125,24 +73,17 @@ const UploadArea = () => {
           }
           const doc = toStoreDocument(data as ApiDocument);
           addDocument(doc);
-          pollDocumentStatus(doc.id);
         } catch (err) {
           setUploadError(err instanceof Error ? err.message : 'Upload failed');
         }
       }
 
       setUploading(false);
+      // The documents query re-polls while anything is PENDING/PROCESSING.
+      invalidateDocuments();
     },
-    [accessToken, addDocument, setUploading, pollDocumentStatus],
+    [accessToken, addDocument, setUploading, invalidateDocuments],
   );
-
-  // Clean up poll intervals on unmount
-  useEffect(() => {
-    return () => {
-      Object.values(pollRef.current).forEach(clearInterval);
-      pollRef.current = {};
-    };
-  }, []);
 
   return (
     <div className="mb-8">
