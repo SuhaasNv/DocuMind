@@ -14,6 +14,7 @@ import { Button } from '@/components/ui/button';
 import { Sheet, SheetContent, SheetTrigger } from '@/components/ui/sheet';
 import { TubelightNav } from '@/components/ui/tubelight-navbar';
 import { useAppStore } from '@/stores/useAppStore';
+import { stopAllChatStreams } from '@/lib/chatStream';
 import { useReducedMotion } from '@/hooks/useReducedMotion';
 
 const NAV_ITEMS = [
@@ -27,11 +28,11 @@ const NAV_ITEMS = [
 const Navbar = () => {
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
   const isAuthenticated = useAppStore((s) => s.isAuthenticated);
-  const { setAuthenticated, abortActiveSSE } = useAppStore();
+  const { setAuthenticated } = useAppStore();
   const reduceMotion = useReducedMotion();
 
   const handleLogout = () => {
-    abortActiveSSE?.();
+    stopAllChatStreams();
     setAuthenticated(false, null, null);
   };
 

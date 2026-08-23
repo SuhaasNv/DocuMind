@@ -69,10 +69,6 @@ interface AppState {
   markAllNotificationsRead: () => void;
   clearNotifications: () => void;
 
-  // SSE abort (not persisted): call to abort active chat stream on logout
-  abortActiveSSE: (() => void) | null;
-  setAbortActiveSSE: (fn: (() => void) | null) => void;
-
   // Actions
   setAuthenticated: (auth: boolean, user?: { id: string; email: string; name: string; role?: string } | null, accessToken?: string | null) => void;
   setDocuments: (documents: Document[]) => void;
@@ -123,9 +119,6 @@ export const useAppStore = create<AppState>()(
         notifications: state.notifications.map((n) => ({ ...n, read: true })),
       })),
       clearNotifications: () => set({ notifications: [] }),
-      abortActiveSSE: null,
-      setAbortActiveSSE: (fn) => set({ abortActiveSSE: fn }),
-
       // Actions
       setAuthenticated: (auth, user = null, accessToken: string | null = null) =>
         set({ isAuthenticated: auth, user, accessToken: auth ? accessToken ?? null : null }),
@@ -310,7 +303,6 @@ export const useAppStore = create<AppState>()(
         isAuthenticated: state.isAuthenticated,
         user: state.user,
         accessToken: state.accessToken,
-        // do not persist abortActiveSSE
       }),
     },
   ),

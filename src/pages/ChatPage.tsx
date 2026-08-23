@@ -9,10 +9,9 @@ import MessageBubble from '@/components/chat/MessageBubble';
 import ChatInput from '@/components/chat/ChatInput';
 import { EmptyChatState } from '@/components/app/EmptyStates';
 import TypingIndicator from '@/components/chat/TypingIndicator';
-import { useAppStore, Message } from '@/stores/useAppStore';
+import { useAppStore } from '@/stores/useAppStore';
 import { usePreferencesStore } from '@/stores/usePreferencesStore';
-import { streamChat } from '@/lib/sseChat';
-import { getApiBaseUrl } from '@/lib/api';
+import { sendChatMessage, stopChatStream } from '@/lib/chatStream';
 
 const FOLLOW_UP_SUGGESTIONS = [
   'Can you elaborate?',
@@ -23,29 +22,18 @@ const FOLLOW_UP_SUGGESTIONS = [
 ] as const;
 
 const SCROLL_THRESHOLD_PX = 120;
-const SSE_TIMEOUT_MS = 90000;
 
 const ChatPage = () => {
   const { documentId } = useParams<{ documentId: string }>();
   const navigate = useNavigate();
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const scrollContainerRef = useRef<HTMLDivElement>(null);
-  const streamAbortRef = useRef<AbortController | null>(null);
-  const streamTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const isMountedRef = useRef(true);
 
   const {
     documents,
     conversations,
-    addMessage,
-    updateMessage,
-    setStreaming,
-    setMessageSources,
-    setMessageError,
     clearConversation,
     removeLastMessages,
-    accessToken,
-    setAbortActiveSSE,
   } = useAppStore();
   const autoScrollWhileStreaming = usePreferencesStore((s) => s.autoScrollWhileStreaming);
 
@@ -72,31 +60,8 @@ const ChatPage = () => {
     return scrollHeight - scrollTop - clientHeight < SCROLL_THRESHOLD_PX;
   }, []);
 
-  useEffect(() => {
-    isMountedRef.current = true;
-    setAbortActiveSSE(() => () => {
-      if (streamTimeoutRef.current) {
-        clearTimeout(streamTimeoutRef.current);
-        streamTimeoutRef.current = null;
-      }
-      streamAbortRef.current?.abort();
-    });
-    return () => {
-      isMountedRef.current = false;
-      setAbortActiveSSE(null);
-      if (streamTimeoutRef.current) {
-        clearTimeout(streamTimeoutRef.current);
-        streamTimeoutRef.current = null;
-      }
-      streamAbortRef.current?.abort();
-      const docId = documentId ?? null;
-      const conv = docId ? useAppStore.getState().conversations[docId] : null;
-      const streamingMsg = conv?.messages.find((m) => m.isStreaming);
-      if (docId && streamingMsg) {
-        useAppStore.getState().setStreaming(docId, streamingMsg.id, false);
-      }
-    };
-  }, [documentId, setAbortActiveSSE]);
+  // Streams are owned by chatStream.ts, not this component: navigating away
+  // keeps the answer generating in the background (like ChatGPT/Claude).
 
   // Auto-scroll to bottom while streaming when preference is on (always follow new content).
   useEffect(() => {
@@ -105,118 +70,16 @@ const ChatPage = () => {
   }, [messages, isStreaming, autoScrollWhileStreaming, scrollToBottom]);
 
   const handleSendMessage = useCallback(
-    async (content: string) => {
+    (content: string) => {
       if (!documentId) return;
-
-      const baseUrl = getApiBaseUrl();
-      if (!baseUrl) {
-        addMessage(documentId, {
-          id: `msg-${Date.now()}`,
-          role: 'user',
-          content,
-          timestamp: new Date(),
-        });
-        addMessage(documentId, {
-          id: `msg-${Date.now() + 1}`,
-          role: 'assistant',
-          content: 'Backend URL is not configured. Add VITE_API_URL to .env at the project root and restart the dev server.',
-          timestamp: new Date(),
-        });
-        return;
-      }
-
-      streamAbortRef.current?.abort();
-      streamAbortRef.current = new AbortController();
-      const signal = streamAbortRef.current.signal;
-      const currentDocumentId = documentId;
-
-      const userMessage: Message = {
-        id: `msg-${Date.now()}`,
-        role: 'user',
-        content,
-        timestamp: new Date(),
-      };
-      addMessage(documentId, userMessage);
-
-      const assistantId = `msg-${Date.now() + 1}`;
-      const assistantMessage: Message = {
-        id: assistantId,
-        role: 'assistant',
-        content: '',
-        timestamp: new Date(),
-        isStreaming: true,
-      };
-      addMessage(documentId, assistantMessage);
-
-      let fullContent = '';
-
-      const appendContent = (chunk: string) => {
-        if (!isMountedRef.current || signal.aborted || currentDocumentId !== documentId) return;
-        fullContent += chunk;
-        updateMessage(currentDocumentId, assistantId, fullContent);
-      };
-
-      const clearStreamTimeout = () => {
-        if (streamTimeoutRef.current) {
-          clearTimeout(streamTimeoutRef.current);
-          streamTimeoutRef.current = null;
-        }
-      };
-
-      streamTimeoutRef.current = setTimeout(() => {
-        streamTimeoutRef.current = null;
-        streamAbortRef.current?.abort();
-        if (!isMountedRef.current || currentDocumentId !== documentId) return;
-        updateMessage(documentId, assistantId, 'Request timed out. Please try again.');
-        setStreaming(documentId, assistantId, false);
-      }, SSE_TIMEOUT_MS);
-
-      await streamChat(
-        documentId,
-        content,
-        {
-          onDelta: (chunk) => {
-            if (signal.aborted || !isMountedRef.current) return;
-            appendContent(chunk);
-          },
-          onDone: (sources) => {
-            clearStreamTimeout();
-            if (!isMountedRef.current || signal.aborted) return;
-            if (currentDocumentId !== documentId) return;
-            setStreaming(documentId, assistantId, false);
-            if (sources.length > 0) setMessageSources(documentId, assistantId, sources);
-          },
-          onError: (message) => {
-            clearStreamTimeout();
-            if (!isMountedRef.current || signal.aborted) return;
-            if (currentDocumentId !== documentId) return;
-            updateMessage(documentId, assistantId, `Sorry, something went wrong: ${message}`);
-            setStreaming(documentId, assistantId, false);
-            setMessageError(documentId, assistantId);
-          },
-        },
-        {
-          signal,
-          getToken: () => accessToken,
-          baseUrl,
-        }
-      );
-
+      void sendChatMessage(documentId, content);
     },
-    [
-      documentId,
-      addMessage,
-      updateMessage,
-      setStreaming,
-      setMessageSources,
-      setMessageError,
-      accessToken,
-    ]
+    [documentId]
   );
 
   const handleNewChat = useCallback(() => {
     if (documentId) {
-      streamAbortRef.current?.abort();
+      stopChatStream(documentId);
       clearConversation(documentId);
     }
   }, [documentId, clearConversation]);
@@ -233,7 +96,7 @@ const ChatPage = () => {
     if (!lastUserMsg) return;
     const lastAssistantIdx = currentMessages.map((m) => m.role).lastIndexOf('assistant');
     if (lastAssistantIdx === -1) return;
-    streamAbortRef.current?.abort();
+    stopChatStream(documentId);
     removeLastMessages(documentId, currentMessages.length - lastAssistantIdx);
     // Defer until the store update has been applied
     setTimeout(() => handleSendMessage(lastUserMsg.content), 0);
@@ -372,7 +235,7 @@ const ChatPage = () => {
 
         <ChatInput
           onSend={handleSendMessage}
-          onStop={() => streamAbortRef.current?.abort()}
+          onStop={() => documentId && stopChatStream(documentId)}
           isLoading={isStreaming}
           disabled={document.status !== 'DONE'}
           documentStatus={document.status}
