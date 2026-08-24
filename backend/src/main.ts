@@ -3,6 +3,7 @@
 import 'dotenv/config';
 import { NestFactory } from '@nestjs/core';
 import { ValidationPipe } from '@nestjs/common';
+import type { NestExpressApplication } from '@nestjs/platform-express';
 import { AppModule } from './app.module.js';
 import { getDatabaseUrlFromEnv } from '../database-url.js';
 
@@ -31,7 +32,12 @@ function validateEnv(): void {
 
 async function bootstrap() {
   validateEnv();
-  const app = await NestFactory.create(AppModule);
+  const app = await NestFactory.create<NestExpressApplication>(AppModule);
+  // Railway (and most PaaS) put the app behind a single reverse-proxy hop.
+  // Without this, Express's req.ip resolves to the proxy rather than the
+  // real client, so ThrottlerGuard's per-IP buckets don't key correctly —
+  // rate limits (e.g. the public share endpoint) silently under-throttle.
+  app.set('trust proxy', 1);
 
   app.useGlobalPipes(
     new ValidationPipe({
