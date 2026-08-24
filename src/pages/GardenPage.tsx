@@ -1,7 +1,9 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
-import ReactMarkdown from 'react-markdown';
+import ReactMarkdown, { type Components } from 'react-markdown';
 import {
+  ChevronDown,
+  ChevronUp,
   Download,
   FileText,
   Loader2,
@@ -47,6 +49,65 @@ import {
 
 const PAGE_SIZE = 24;
 const SEARCH_DEBOUNCE_MS = 300;
+/** Collapsed answer height on a card; longer answers fade + get a toggle. */
+const CARD_ANSWER_MAX_PX = 260;
+
+interface InsightAnswerProps {
+  content: string;
+  components: Components;
+}
+
+/**
+ * Renders a pinned answer clamped to a preview height with a fade + "Show
+ * more" toggle. Without this a single long answer stretches its grid card
+ * into a tall, narrow strip; clamping keeps cards uniform in the grid.
+ */
+const InsightAnswer = ({ content, components }: InsightAnswerProps) => {
+  const bodyRef = useRef<HTMLDivElement>(null);
+  const [expanded, setExpanded] = useState(false);
+  const [overflows, setOverflows] = useState(false);
+
+  useEffect(() => {
+    const el = bodyRef.current;
+    if (!el) return;
+    setOverflows(el.scrollHeight > CARD_ANSWER_MAX_PX + 8);
+  }, [content]);
+
+  return (
+    <div className="flex-1 min-w-0">
+      <div
+        ref={bodyRef}
+        className="prose prose-invert prose-sm max-w-none break-words relative overflow-hidden"
+        style={expanded ? undefined : { maxHeight: CARD_ANSWER_MAX_PX }}
+      >
+        <ReactMarkdown components={components}>{content}</ReactMarkdown>
+        {!expanded && overflows && (
+          <div
+            aria-hidden="true"
+            className="pointer-events-none absolute inset-x-0 bottom-0 h-12 bg-gradient-to-t from-card/90 to-transparent"
+          />
+        )}
+      </div>
+      {overflows && (
+        <button
+          type="button"
+          onClick={() => setExpanded((v) => !v)}
+          className="mt-1.5 inline-flex items-center gap-1 text-xs text-primary hover:text-primary/80 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded"
+        >
+          {expanded ? (
+            <>
+              Show less <ChevronUp className="w-3.5 h-3.5" aria-hidden="true" />
+            </>
+          ) : (
+            <>
+              Show more <ChevronDown className="w-3.5 h-3.5" aria-hidden="true" />
+            </>
+          )}
+        </button>
+      )}
+    </div>
+  );
+};
 
 interface CardEditorProps {
   insight: Insight;
@@ -313,22 +374,19 @@ const GardenPage = () => {
                 >
                   <h3 className="font-medium text-sm mb-2 break-words">{insight.question}</h3>
 
-                  <div className="prose prose-invert prose-sm max-w-none flex-1 break-words">
-                    <ReactMarkdown
-                      components={{
-                        ...chatMarkdownComponents,
-                        a: makeCiteAnchor({
-                          sourceByMarker: byMarker,
-                          onChipClick: (marker) => {
-                            const src = byMarker.get(marker);
-                            if (src) openSource(insight, src);
-                          },
-                        }),
-                      }}
-                    >
-                      {linkifyCitations(insight.content, byMarker, true)}
-                    </ReactMarkdown>
-                  </div>
+                  <InsightAnswer
+                    content={linkifyCitations(insight.content, byMarker, true)}
+                    components={{
+                      ...chatMarkdownComponents,
+                      a: makeCiteAnchor({
+                        sourceByMarker: byMarker,
+                        onChipClick: (marker) => {
+                          const src = byMarker.get(marker);
+                          if (src) openSource(insight, src);
+                        },
+                      }),
+                    }}
+                  />
 
                   {/* Document provenance */}
                   <div className="mt-3 text-xs text-muted-foreground flex items-center gap-1.5 min-w-0">
