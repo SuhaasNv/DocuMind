@@ -10,7 +10,7 @@ import { LlmService } from '../rag/llm.service.js';
 import { ChatCacheService } from '../rag/chat-cache.service.js';
 import { parseFollowups } from '../rag/followups.js';
 import { EmbeddingService } from '../embedding/embedding.service.js';
-import { logRagLatency } from '../rag/rag-latency.logger.js';
+import { estimateTokens, logRagLatency } from '../rag/rag-latency.logger.js';
 import type {
   ChatResponseDto,
   ChatSourceDto,
@@ -365,6 +365,8 @@ export class RagOrchestratorService {
       promptBuildMs,
       ttftMs: null,
       totalMs,
+      tokensIn: estimateTokens(messages.map((m) => m.content).join(' ')),
+      tokensOut: estimateTokens(raw),
     });
 
     // Cached entries never store debug data — it is recomputed per request.
@@ -614,6 +616,8 @@ export class RagOrchestratorService {
         promptBuildMs,
         ttftMs: ttftMs ?? null,
         totalMs,
+        tokensIn: estimateTokens(messages.map((m) => m.content).join(' ')),
+        tokensOut: estimateTokens(fullAnswer),
       });
       // Strip the FOLLOWUPS line BEFORE caching so replays serve the display
       // answer; followUps are stored separately so replays keep the chips.

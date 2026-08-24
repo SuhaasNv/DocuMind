@@ -42,6 +42,10 @@ import {
   ChevronDown,
   Circle,
   Search,
+  FolderOpen,
+  MessageSquare,
+  Lightbulb,
+  Link2,
 } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
@@ -77,6 +81,7 @@ import {
   XAxis,
   YAxis,
   Tooltip,
+  Legend,
   ResponsiveContainer,
   CartesianGrid,
 } from 'recharts';
@@ -562,6 +567,14 @@ export default function AdminDashboard() {
                 </div>
               </CardContent>
             </Card>
+
+            {/* Content counts */}
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+              <StatCard label="Collections" value={metrics?.totalCollections} icon={FolderOpen} color="text-primary" bg="from-primary/10 to-primary/5 border-primary/20" loading={metricsLoading} />
+              <StatCard label="Conversations" value={metrics?.totalConversations} icon={MessageSquare} color="text-blue-400" bg="from-blue-500/10 to-blue-500/5 border-blue-500/20" loading={metricsLoading} />
+              <StatCard label="Insights" value={metrics?.totalInsights} icon={Lightbulb} color="text-yellow-400" bg="from-yellow-500/10 to-yellow-500/5 border-yellow-500/20" loading={metricsLoading} />
+              <StatCard label="Active Share Links" value={metrics?.activeShareLinks} icon={Link2} color="text-green-400" bg="from-green-500/10 to-green-500/5 border-green-500/20" loading={metricsLoading} />
+            </div>
 
             {/* Active users */}
             <Card className="border-border">
@@ -1103,6 +1116,54 @@ export default function AdminDashboard() {
               />
             </div>
 
+            {/* Chat volume, cache, and cost (trailing 7 days) */}
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+              <StatCard
+                label="Chats (7d)"
+                value={ragStats?.totalChats}
+                icon={Activity}
+                color="text-blue-400"
+                bg="from-blue-500/10 to-blue-500/5 border-blue-500/20"
+                loading={ragLoading}
+              />
+              <StatCard
+                label="Cache Hit Rate (7d)"
+                value={
+                  ragStats?.cacheHitRate != null
+                    ? `${Math.round(ragStats.cacheHitRate * 100)}%`
+                    : '—'
+                }
+                icon={Database}
+                color="text-green-400"
+                bg="from-green-500/10 to-green-500/5 border-green-500/20"
+                loading={ragLoading}
+              />
+              <StatCard
+                label="Est. Tokens (7d)"
+                value={
+                  ragStats
+                    ? (ragStats.tokensIn + ragStats.tokensOut).toLocaleString()
+                    : undefined
+                }
+                icon={Cpu}
+                color="text-yellow-400"
+                bg="from-yellow-500/10 to-yellow-500/5 border-yellow-500/20"
+                loading={ragLoading}
+              />
+              <StatCard
+                label="Est. Cost (7d)"
+                value={
+                  ragStats?.estCostUsd != null
+                    ? `$${ragStats.estCostUsd.toFixed(4)}`
+                    : '—'
+                }
+                icon={TrendingUp}
+                color="text-primary"
+                bg="from-primary/10 to-primary/5 border-primary/20"
+                loading={ragLoading}
+              />
+            </div>
+
             {/* Latency metrics */}
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
               {(
@@ -1136,12 +1197,12 @@ export default function AdminDashboard() {
               ))}
             </div>
 
-            {/* Daily document activity chart */}
+            {/* Daily activity chart: documents processed + chats */}
             <Card className="border-border">
               <CardHeader className="pb-3">
                 <CardTitle className="text-base flex items-center gap-2">
                   <TrendingUp className="w-4 h-4" />
-                  Document Processing Activity (Last 7 Days)
+                  Activity (Last 7 Days)
                 </CardTitle>
               </CardHeader>
               <CardContent>
@@ -1150,7 +1211,13 @@ export default function AdminDashboard() {
                 ) : (
                   <ResponsiveContainer width="100%" height={220}>
                     <BarChart
-                      data={ragStats?.dailyDocumentActivity ?? []}
+                      data={(ragStats?.dailyDocumentActivity ?? []).map((d) => ({
+                        date: d.date,
+                        documents: d.count,
+                        chats:
+                          ragStats?.dailyChatActivity?.find((c) => c.date === d.date)
+                            ?.count ?? 0,
+                      }))}
                       margin={{ top: 4, right: 8, left: -20, bottom: 0 }}
                     >
                       <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
@@ -1179,9 +1246,20 @@ export default function AdminDashboard() {
                             day: 'numeric',
                           })
                         }
-                        formatter={(v: number) => [v, 'Documents processed']}
                       />
-                      <Bar dataKey="count" fill="hsl(var(--primary))" radius={[4, 4, 0, 0]} />
+                      <Legend wrapperStyle={{ fontSize: 12 }} />
+                      <Bar
+                        dataKey="documents"
+                        name="Documents processed"
+                        fill="hsl(var(--primary))"
+                        radius={[4, 4, 0, 0]}
+                      />
+                      <Bar
+                        dataKey="chats"
+                        name="Chats"
+                        fill="hsl(217 91% 60%)"
+                        radius={[4, 4, 0, 0]}
+                      />
                     </BarChart>
                   </ResponsiveContainer>
                 )}

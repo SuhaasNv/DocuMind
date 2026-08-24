@@ -10,6 +10,7 @@ import { unlink } from 'node:fs/promises';
 import path from 'node:path';
 import { PrismaService } from '../prisma/prisma.service.js';
 import { ChatCacheService } from '../rag/chat-cache.service.js';
+import { RagMetricsService } from '../rag/rag-metrics.service.js';
 import { collectionCacheScope } from '../collections/collections.service.js';
 import { DocumentStatus, Role } from '../../generated/prisma/client.js';
 
@@ -29,6 +30,7 @@ export class AdminService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly chatCache: ChatCacheService,
+    private readonly ragMetrics: RagMetricsService,
     @InjectQueue(QUEUE_NAME) private readonly docQueue: Queue,
   ) {}
 
@@ -46,6 +48,10 @@ export class AdminService {
       processingDocuments,
       failedDocuments,
       doneDocuments,
+      totalCollections,
+      totalConversations,
+      totalInsights,
+      activeShareLinks,
     ] = await Promise.all([
       this.prisma.user.count(),
       this.prisma.document.count(),
@@ -55,6 +61,15 @@ export class AdminService {
       this.prisma.document.count({ where: { status: 'PROCESSING' } }),
       this.prisma.document.count({ where: { status: 'FAILED' } }),
       this.prisma.document.count({ where: { status: 'DONE' } }),
+      this.prisma.collection.count(),
+      this.prisma.conversation.count(),
+      this.prisma.insight.count(),
+      this.prisma.sharedAnswer.count({
+        where: {
+          revoked: false,
+          OR: [{ expiresAt: null }, { expiresAt: { gt: new Date() } }],
+        },
+      }),
     ]);
 
     let activeJobs = 0;
@@ -82,6 +97,10 @@ export class AdminService {
       totalDocuments,
       totalChunks,
       onlineUsers,
+      totalCollections,
+      totalConversations,
+      totalInsights,
+      activeShareLinks,
       documentsByStatus: {
         pending: pendingDocuments,
         processing: processingDocuments,
@@ -494,18 +513,18 @@ export class AdminService {
   // ── RAG Analytics ─────────────────────────────────────────────────────────
 
   async getRagStats() {
-    // Derive query volume from document chunks as a proxy for RAG activity.
-    // A full production system would persist per-query latency rows.
-    const [totalChunks, totalDocuments, recentDocuments] = await Promise.all([
-      this.prisma.documentChunk.count(),
-      this.prisma.document.count({ where: { status: 'DONE' } }),
-      this.prisma.document.findMany({
-        where: { status: 'DONE' },
-        select: { uploadedAt: true },
-        orderBy: { uploadedAt: 'desc' },
-        take: 30,
-      }),
-    ]);
+    const [totalChunks, totalDocuments, recentDocuments, chatStats] =
+      await Promise.all([
+        this.prisma.documentChunk.count(),
+        this.prisma.document.count({ where: { status: 'DONE' } }),
+        this.prisma.document.findMany({
+          where: { status: 'DONE' },
+          select: { uploadedAt: true },
+          orderBy: { uploadedAt: 'desc' },
+          take: 30,
+        }),
+        this.ragMetrics.getAggregate(),
+      ]);
 
     // Build a simple daily activity histogram from document processing dates
     const dailyCounts: Record<string, number> = {};
@@ -519,15 +538,34 @@ export class AdminService {
       if (key in dailyCounts) dailyCounts[key]++;
     }
 
+    // Cost: estimated tokens x env rates. Never hardcode prices — with no
+    // rates configured (default 0) the cost is null, not a made-up number.
+    const inRate = Number(process.env.LLM_COST_PER_1K_INPUT ?? 0) || 0;
+    const outRate = Number(process.env.LLM_COST_PER_1K_OUTPUT ?? 0) || 0;
+    const estCostUsd =
+      inRate > 0 || outRate > 0
+        ? Math.round(
+            ((chatStats.tokensIn / 1000) * inRate +
+              (chatStats.tokensOut / 1000) * outRate) *
+              10000,
+          ) / 10000
+        : null;
+
     return {
       totalProcessedDocuments: totalDocuments,
       totalChunks,
       avgChunksPerDocument:
         totalDocuments > 0 ? Math.round(totalChunks / totalDocuments) : 0,
-      // Placeholder latency metrics — replace with real DB table when instrumenting
-      avgRetrievalMs: null,
-      avgFirstTokenMs: null,
-      avgResponseMs: null,
+      // Real numbers from the Redis-aggregated telemetry (trailing 7 days).
+      totalChats: chatStats.totalChats,
+      cacheHitRate: chatStats.cacheHitRate,
+      avgRetrievalMs: chatStats.avgRetrievalMs,
+      avgFirstTokenMs: chatStats.avgFirstTokenMs,
+      avgResponseMs: chatStats.avgResponseMs,
+      tokensIn: chatStats.tokensIn,
+      tokensOut: chatStats.tokensOut,
+      estCostUsd,
+      dailyChatActivity: chatStats.dailyChatActivity,
       dailyDocumentActivity: Object.entries(dailyCounts).map(
         ([date, count]) => ({
           date,

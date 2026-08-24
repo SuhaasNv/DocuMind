@@ -9,6 +9,7 @@ import { Role } from '../../generated/prisma/client.js';
 import { collectionCacheScope } from '../collections/collections.service.js';
 import type { PrismaService } from '../prisma/prisma.service.js';
 import type { ChatCacheService } from '../rag/chat-cache.service.js';
+import type { RagMetricsService } from '../rag/rag-metrics.service.js';
 import type { Queue } from 'bullmq';
 import { unlink } from 'node:fs/promises';
 
@@ -63,6 +64,9 @@ function setup() {
   };
   const invalidateScope = jest.fn().mockResolvedValue(undefined);
   const chatCache = { invalidateScope } as unknown as ChatCacheService;
+  const ragMetrics = {
+    getAggregate: jest.fn(),
+  } as unknown as RagMetricsService;
   const queue: QueueMock = {
     getJob: jest.fn(),
     getJobs: jest.fn(),
@@ -72,6 +76,7 @@ function setup() {
   const service = new AdminService(
     prisma as unknown as PrismaService,
     chatCache,
+    ragMetrics,
     queue as unknown as Queue,
   );
   return { service, prisma, invalidateScope, queue };

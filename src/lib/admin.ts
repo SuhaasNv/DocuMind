@@ -56,6 +56,10 @@ export interface SystemMetrics {
   totalDocuments: number;
   totalChunks: number;
   onlineUsers: number;
+  totalCollections: number;
+  totalConversations: number;
+  totalInsights: number;
+  activeShareLinks: number;
   documentsByStatus: DocumentsByStatus;
   jobs: JobCounts;
 }
@@ -81,9 +85,17 @@ export interface RagStats {
   totalProcessedDocuments: number;
   totalChunks: number;
   avgChunksPerDocument: number;
+  totalChats: number;
+  /** 0-1 fraction over the trailing 7 days; null with no traffic. */
+  cacheHitRate: number | null;
   avgRetrievalMs: number | null;
   avgFirstTokenMs: number | null;
   avgResponseMs: number | null;
+  tokensIn: number;
+  tokensOut: number;
+  /** Estimated USD over 7 days; null when no cost rates are configured. */
+  estCostUsd: number | null;
+  dailyChatActivity: DailyActivity[];
   dailyDocumentActivity: DailyActivity[];
 }
 
