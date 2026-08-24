@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 import { DocumentsController } from './documents.controller.js';
 import { DocumentsService } from './documents.service.js';
+import { OrphanSweepService } from './orphan-sweep.service.js';
 import { RetrievalService } from './retrieval.service.js';
 import { RagOrchestratorService } from './rag-orchestrator.service.js';
 import { RagModule } from '../rag/rag.module.js';
@@ -12,7 +13,12 @@ import { MeModule } from '../me/me.module.js';
 @Module({
   imports: [RagModule, JobsModule, ChunksModule, ConversationsModule, MeModule],
   controllers: [DocumentsController],
-  providers: [DocumentsService, RetrievalService, RagOrchestratorService],
+  providers: [
+    DocumentsService,
+    OrphanSweepService,
+    RetrievalService,
+    RagOrchestratorService,
+  ],
   exports: [DocumentsService, RetrievalService, RagOrchestratorService],
 })
 export class DocumentsModule {}

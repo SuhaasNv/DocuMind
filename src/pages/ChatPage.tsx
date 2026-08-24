@@ -17,6 +17,7 @@ import { fetchCollection } from '@/lib/collections';
 import { createInsight } from '@/lib/insights';
 import { citationIndex } from '@/components/chat/markdownComponents';
 import { getApiBaseUrlOrThrow, getApiErrorMessage } from '@/lib/api';
+import { checkSessionExpired } from '@/lib/errorMessages';
 import { toast } from 'sonner';
 import { useConversationHydration } from '@/hooks/useConversationHydration';
 
@@ -211,7 +212,7 @@ const ChatPage = () => {
         });
         toast.success('Pinned to your Knowledge Garden');
       } catch (err) {
-        toast.error(getApiErrorMessage(err, 'Failed to pin insight'));
+        toast.error(getApiErrorMessage(err, 'Could not save this to your garden. Please try again.'));
         throw err;
       }
     },
@@ -260,7 +261,10 @@ const ChatPage = () => {
             })),
           }),
         });
-        if (!res.ok) throw new Error(`Request failed (${res.status})`);
+        if (!res.ok) {
+          checkSessionExpired(res);
+          throw new Error(`Request failed (${res.status})`);
+        }
         const data = (await res.json()) as { token: string };
         const url = `${window.location.origin}/s/${data.token}`;
         try {
@@ -270,7 +274,7 @@ const ChatPage = () => {
           toast.success(`Share link created: ${url}`);
         }
       } catch (err) {
-        toast.error(getApiErrorMessage(err, 'Could not create share link'));
+        toast.error(getApiErrorMessage(err, 'Could not create a share link. Please try again.'));
         throw err;
       }
     },

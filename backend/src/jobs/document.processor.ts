@@ -199,15 +199,15 @@ export class DocumentProcessor extends WorkerHost {
 
       const textChunks = chunkText(text);
       if (textChunks.length === 0) {
-        // No extractable text (e.g. scanned PDF): finish with zero chunks;
-        // chat handles the empty-retrieval case with its own message.
-        this.logger.warn(`Document ${documentId} has no extractable text`);
-        await this.updateProgress(documentId, document.userId, {
-          status: DocumentStatus.DONE,
-          progress: 100,
-          stage: null,
-          chunkCount: 0,
-        });
+        // No extractable text (e.g. scanned PDF): a DONE-with-zero-chunks
+        // document looks like a stuck success ("Ready" but chat has nothing
+        // to read). Mark FAILED with a friendly scanned-PDF hint instead.
+        await this.setFailed(
+          documentId,
+          document.userId,
+          'No extractable text',
+          FAILURE_REASONS.noText,
+        );
         return;
       }
 

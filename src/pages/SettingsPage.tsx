@@ -24,6 +24,7 @@ import { useAppStore } from '@/stores/useAppStore';
 import { stopAllChatStreams } from '@/lib/chatStream';
 import { usePreferencesStore } from '@/stores/usePreferencesStore';
 import { getApiBaseUrl, APP_VERSION, APP_ENV } from '@/lib/api';
+import { checkSessionExpired, ERROR_MESSAGES } from '@/lib/errorMessages';
 import Header from '@/components/app/Header';
 import ApiTokensCard from '@/components/app/ApiTokensCard';
 import { User, Shield, Key, Settings2, Server, LogOut, Trash2, Link2, Copy, Ban, Plug } from 'lucide-react';
@@ -127,13 +128,16 @@ const SettingsPage = () => {
         method: 'POST',
         headers: { Authorization: `Bearer ${accessToken}` },
       });
-      if (!res.ok) throw new Error(`Revoke failed (${res.status})`);
+      if (!res.ok) {
+        checkSessionExpired(res);
+        throw new Error(`Revoke failed (${res.status})`);
+      }
       setSharedLinks((links) =>
         links.map((l) => (l.id === id ? { ...l, revoked: true } : l)),
       );
       toast.success('Share link revoked');
     } catch {
-      toast.error('Could not revoke the link');
+      toast.error('Could not revoke the link. Please try again.');
     }
   };
 
@@ -191,10 +195,10 @@ const SettingsPage = () => {
       } else {
         const body: { message?: string | string[] } = await res.json().catch(() => ({}));
         const msg = Array.isArray(body.message) ? body.message[0] : body.message;
-        toast.error(msg || 'Failed to change password');
+        toast.error(msg || ERROR_MESSAGES.genericRetry);
       }
     } catch {
-      toast.error('Network error: could not reach the backend');
+      toast.error(ERROR_MESSAGES.networkUnreachable);
     } finally {
       setPwSubmitting(false);
     }

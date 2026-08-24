@@ -5,6 +5,8 @@
  * Sources (first wins): runtime config (from /runtime-config.json), then VITE_API_URL at build.
  * Runtime config is written at build from VITE_API_URL so production always gets the right URL.
  */
+import { ERROR_MESSAGES, isNetworkError } from './errorMessages';
+
 const env = (import.meta as unknown as { env: { VITE_API_URL?: string; VITE_APP_VERSION?: string; MODE?: string } }).env;
 
 let runtimeApiUrl: string | null = null;
@@ -60,9 +62,13 @@ export const APP_ENV = env.MODE ?? 'development';
 
 /**
  * Returns a user-facing error message for API failures.
- * Uses the actual HTTP/network error cause (e.g. "Failed to fetch") instead of a generic message.
+ * Raw browser network errors ("Failed to fetch") are mapped to a plain-language
+ * message with a next step; other error messages pass through as-is.
  */
-export function getApiErrorMessage(err: unknown, fallback = 'Something went wrong. Please try again.'): string {
+export function getApiErrorMessage(err: unknown, fallback: string = ERROR_MESSAGES.genericRetry): string {
+  if (isNetworkError(err)) {
+    return ERROR_MESSAGES.networkUnreachable;
+  }
   if (err instanceof Error && err.message && err.message.trim() !== '') {
     return err.message.trim();
   }

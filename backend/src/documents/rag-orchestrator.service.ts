@@ -24,10 +24,10 @@ import type { RetrievalResultDto } from './dto/retrieval-response.dto.js';
 const NO_INFO_ANSWER = "I don't have enough information to answer that.";
 /** When retrieval returns no chunks (document not indexed or no rows). */
 const NO_CHUNKS_ANSWER =
-  'No content was found for this document. It may still be processing (ensure Redis is running), or the file may have no extractable text. Try again in a moment or re-upload a PDF with selectable text.';
+  'This document has no readable content yet. It may still be processing — try again in a moment, or re-upload a PDF that contains selectable text.';
 /** When all retrieved chunks are empty (e.g. image-only PDF). */
 const NO_EXTRACTABLE_TEXT_ANSWER =
-  'This document has no extractable text (e.g. image-only or scanned PDF). Try uploading a PDF with selectable text.';
+  "This document appears to be scanned images with no selectable text, so I can't read it. Try a text-based PDF or an OCR'd copy.";
 const DEFAULT_TOP_K = 4;
 
 export interface RagChatInput {

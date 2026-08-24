@@ -2,6 +2,7 @@ import { useEffect } from 'react';
 import { useInfiniteQuery, useQueryClient } from '@tanstack/react-query';
 import { useAppStore, type Document } from '@/stores/useAppStore';
 import { getApiBaseUrl } from '@/lib/api';
+import { checkSessionExpired } from '@/lib/errorMessages';
 
 /** Backend document response shape (matches DocumentResponseDto). */
 export interface ApiDocument {
@@ -59,7 +60,10 @@ async function fetchDocumentsPage(
     `${baseUrl}/documents?take=${DOCUMENTS_PAGE_SIZE}&skip=${skip}`,
     { headers: { Authorization: `Bearer ${token}` } },
   );
-  if (!res.ok) throw new Error(`Failed to load documents (${res.status})`);
+  if (!res.ok) {
+    checkSessionExpired(res);
+    throw new Error(`Failed to load documents (${res.status})`);
+  }
   return (await res.json()) as DocumentsPage;
 }
 

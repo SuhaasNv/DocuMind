@@ -294,6 +294,11 @@ const GardenPage = () => {
                   ? 'Try a different search or clear the tag filter.'
                   : 'Pin answers from any chat to grow your knowledge garden.'}
               </p>
+              {!query && !activeTag && (
+                <Button asChild className="mt-6">
+                  <Link to="/app">Open your documents</Link>
+                </Button>
+              )}
             </div>
           ) : (
             <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">

@@ -67,7 +67,7 @@ export const EmptyDocuments = () => (
         <EmptyState
             icon={FileText}
             title="No documents yet"
-            description="Upload your first PDF to get started. We'll utilize RAG to help you chat with it in seconds."
+            description="Drop a PDF in the upload area above and you can start asking it questions in seconds."
         />
         {/* Plain 3-step hint: extract → understand → chat */}
         <div className="flex flex-wrap items-start justify-center gap-x-6 gap-y-3 pb-8 -mt-8">

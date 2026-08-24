@@ -1,5 +1,6 @@
 import { useAppStore, ChatSource } from '@/stores/useAppStore';
 import { getApiBaseUrlOrThrow } from '@/lib/api';
+import { checkSessionExpired } from '@/lib/errorMessages';
 
 export interface Insight {
   id: string;
@@ -44,6 +45,7 @@ function authHeaders(): Record<string, string> {
 
 async function throwOnError(res: Response): Promise<void> {
   if (res.ok) return;
+  checkSessionExpired(res);
   let message = `Request failed (${res.status})`;
   try {
     const body = (await res.json()) as { message?: string | string[] };

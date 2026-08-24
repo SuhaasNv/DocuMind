@@ -1,4 +1,5 @@
 import { getApiBaseUrlOrThrow } from './api';
+import { checkSessionExpired } from './errorMessages';
 import type { CollectionSummary, DocumentStatus } from '@/stores/useAppStore';
 
 /** Backend collection response shape (matches CollectionResponseDto). */
@@ -33,6 +34,7 @@ async function request<T>(
     },
   });
   if (!res.ok) {
+    checkSessionExpired(res);
     let message = `Request failed (${res.status})`;
     try {
       const body = (await res.json()) as { message?: string | string[] };

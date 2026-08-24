@@ -139,6 +139,7 @@ const Sidebar = () => {
           variant="ghost"
           size="icon"
           onClick={toggleSidebar}
+          aria-label={isSidebarOpen ? 'Collapse sidebar' : 'Expand sidebar'}
           className="text-muted-foreground hover:text-foreground shrink-0"
         >
           {isSidebarOpen ? (

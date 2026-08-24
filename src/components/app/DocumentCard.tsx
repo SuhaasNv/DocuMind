@@ -15,7 +15,8 @@ import {
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
 import { Document, DocumentStatus, useAppStore } from '@/stores/useAppStore';
-import { getApiBaseUrl } from '@/lib/api';
+import { getApiBaseUrl, getApiErrorMessage } from '@/lib/api';
+import { checkSessionExpired, ERROR_MESSAGES } from '@/lib/errorMessages';
 import { useInvalidateDocuments } from '@/hooks/useDocumentsQuery';
 import { formatFileSize, stageLabel } from '@/lib/format';
 import { formatDistanceToNow } from 'date-fns';
@@ -76,12 +77,15 @@ const DocumentCard = ({ document }: DocumentCardProps) => {
         method: 'DELETE',
         headers: { Authorization: `Bearer ${accessToken}` },
       });
-      if (!res.ok) throw new Error(`Delete failed (${res.status})`);
+      if (!res.ok) {
+        checkSessionExpired(res);
+        throw new Error(`Delete failed (${res.status})`);
+      }
       removeDocument(document.id);
       invalidateDocuments();
     } catch (err) {
-      toast.error('Failed to delete document', {
-        description: err instanceof Error ? err.message : 'Please try again.',
+      toast.error("Couldn't delete this document", {
+        description: getApiErrorMessage(err, ERROR_MESSAGES.genericRetry),
       });
     }
   };
@@ -205,6 +209,10 @@ const DocumentCard = ({ document }: DocumentCardProps) => {
                       // Revert on failure
                       useAppStore.getState().updateDocument(document.id, {
                         status: 'FAILED',
+                      });
+                      checkSessionExpired(res);
+                      toast.error("Couldn't restart processing", {
+                        description: ERROR_MESSAGES.genericRetry,
                       });
                     } else {
                       // Restart the documents query poller for the new PENDING doc.

@@ -16,6 +16,7 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { cn } from '@/lib/utils';
+import { ERROR_MESSAGES } from '@/lib/errorMessages';
 import { useAppStore, type Document } from '@/stores/useAppStore';
 import { usePreferencesStore } from '@/stores/usePreferencesStore';
 import { useDocumentsQuery } from '@/hooks/useDocumentsQuery';
@@ -187,7 +188,7 @@ const Dashboard = () => {
                 <AlertCircle className="w-10 h-10 text-destructive mx-auto mb-3" />
                 <h3 className="font-semibold mb-1">Couldn't load your documents</h3>
                 <p className="text-sm text-muted-foreground mb-4">
-                  The backend may be unreachable. Check your connection and try again.
+                  {ERROR_MESSAGES.networkUnreachable}
                 </p>
                 <Button variant="outline" onClick={() => void refetch()}>
                   <RefreshCw className="w-4 h-4 mr-2" />

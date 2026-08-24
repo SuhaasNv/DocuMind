@@ -318,9 +318,13 @@ async function main(): Promise<void> {
   // when absent" — so we assert validity-when-present, never mere presence
   // (asserting presence would flake on the model omitting the FOLLOWUPS line).
   if (Array.isArray(chatBody.followUps) && chatBody.followUps.length > 0) {
-    console.log(`[INFO] live answer emitted ${chatBody.followUps.length} follow-up chip(s)`);
+    console.log(
+      `[INFO] live answer emitted ${chatBody.followUps.length} follow-up chip(s)`,
+    );
   } else {
-    console.log('[INFO] live answer emitted no follow-up chips (allowed by contract)');
+    console.log(
+      '[INFO] live answer emitted no follow-up chips (allowed by contract)',
+    );
   }
 
   // 5. SSE stream + cached replay keeps chips (stored separately in cache)

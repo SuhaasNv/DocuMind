@@ -35,6 +35,37 @@ describe('mapFailureReason', () => {
     );
   });
 
+  it('maps password-protected PDFs distinctly from corrupt ones', () => {
+    // pdf.js throws PasswordException with message "No password given".
+    const pw = new Error('No password given');
+    pw.name = 'PasswordException';
+    expect(mapFailureReason(pw)).toBe(FAILURE_REASONS.passwordProtected);
+    expect(mapFailureReason(new Error('File is encrypted'))).toBe(
+      FAILURE_REASONS.passwordProtected,
+    );
+    expect(mapFailureReason(pw)).not.toBe(FAILURE_REASONS.invalidPdf);
+  });
+
+  it('maps pdf.js exception names carried on err.name', () => {
+    const invalid = new Error('PDF header not found');
+    invalid.name = 'InvalidPDFException';
+    expect(mapFailureReason(invalid)).toBe(FAILURE_REASONS.invalidPdf);
+  });
+
+  it('falls back to the generic message for unknown errors', () => {
+    expect(mapFailureReason(new Error('something odd happened'))).toBe(
+      FAILURE_REASONS.generic,
+    );
+  });
+
+  it('every user-facing reason is jargon-free and distinct', () => {
+    const reasons = Object.values(FAILURE_REASONS);
+    for (const reason of reasons) {
+      expect(reason).not.toMatch(/chunk|embedding|token|xref|redis|enoent/i);
+    }
+    expect(new Set(reasons).size).toBe(reasons.length);
+  });
+
   it('never leaks raw error details, stacks, or paths', () => {
     const nasty = new Error(
       'boom at /Users/secret/backend/src/jobs/document.processor.ts:120',

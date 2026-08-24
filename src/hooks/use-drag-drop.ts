@@ -1,7 +1,13 @@
 import { useRef, useEffect } from 'react';
 import { useLocation } from 'react-router-dom';
+import { toast } from 'sonner';
 import { useAppStore } from '@/stores/useAppStore';
-import { getApiBaseUrl } from '@/lib/api';
+import { getApiBaseUrl, getApiErrorMessage } from '@/lib/api';
+import {
+    checkSessionExpired,
+    ERROR_MESSAGES,
+    UPLOAD_STATUS,
+} from '@/lib/errorMessages';
 import {
     toStoreDocument,
     useInvalidateDocuments,
@@ -76,6 +82,8 @@ export const useDragDrop = () => {
         setUploading(true);
 
         const apiBaseUrl = getApiBaseUrl();
+        const statusToast = toast.loading(UPLOAD_STATUS.keepTabOpen);
+        let anyUploaded = false;
 
         for (const file of pdfFiles) {
             try {
@@ -89,13 +97,27 @@ export const useDragDrop = () => {
                 });
 
                 if (res.ok) {
+                    // 201: row created + processing job queued server-side.
                     const data = (await res.json()) as ApiDocument;
                     addDocument(toStoreDocument(data));
+                    anyUploaded = true;
+                } else {
+                    checkSessionExpired(res);
+                    const body = (await res.json().catch(() => ({}))) as { message?: string };
+                    toast.error(
+                        typeof body.message === 'string'
+                            ? body.message
+                            : ERROR_MESSAGES.uploadFailed,
+                    );
                 }
-
             } catch (error) {
-                console.error("Upload failed", error);
+                toast.error(getApiErrorMessage(error, ERROR_MESSAGES.uploadFailed));
             }
+        }
+        if (anyUploaded) {
+            toast.success(UPLOAD_STATUS.safeToLeave, { id: statusToast });
+        } else {
+            toast.dismiss(statusToast);
         }
         setUploading(false);
         // The documents query is the one poller; it picks up processing status.

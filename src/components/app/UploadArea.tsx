@@ -1,10 +1,16 @@
 import { useState, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Upload, FileText, X, AlertCircle } from 'lucide-react';
+import { Upload, FileText, X, AlertCircle, Loader2 } from 'lucide-react';
+import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 import { useAppStore } from '@/stores/useAppStore';
-import { getApiBaseUrl } from '@/lib/api';
+import { getApiBaseUrl, getApiErrorMessage } from '@/lib/api';
+import {
+  checkSessionExpired,
+  ERROR_MESSAGES,
+  UPLOAD_STATUS,
+} from '@/lib/errorMessages';
 import {
   toStoreDocument,
   useInvalidateDocuments,
@@ -43,16 +49,17 @@ const UploadArea = () => {
     async (files: File[]) => {
       const pdfFiles = files.filter((file) => file.type === 'application/pdf');
       if (pdfFiles.length === 0) {
-        setUploadError('Please upload PDF files only');
+        setUploadError(ERROR_MESSAGES.notAPdf);
         return;
       }
       if (!accessToken) {
-        setUploadError('Please log in to upload documents');
+        setUploadError('Please sign in to upload documents.');
         return;
       }
 
       setUploadError(null);
       setUploading(true);
+      let anyUploaded = false;
 
       for (const file of pdfFiles) {
         try {
@@ -63,22 +70,28 @@ const UploadArea = () => {
             headers: { Authorization: `Bearer ${accessToken}` },
             body: formData,
           });
-          const data = (await res.json()) as ApiDocument | { message?: string; statusCode?: number };
           if (!res.ok) {
-            const msg = typeof (data as { message?: string }).message === 'string'
-              ? (data as { message: string }).message
-              : 'Upload failed';
-            setUploadError(msg);
+            checkSessionExpired(res);
+            const data = (await res.json().catch(() => ({}))) as { message?: string };
+            setUploadError(
+              typeof data.message === 'string' ? data.message : ERROR_MESSAGES.uploadFailed,
+            );
             continue;
           }
-          const doc = toStoreDocument(data as ApiDocument);
+          // 201: the row is created and the processing job is queued — the
+          // user can safely leave now.
+          const doc = toStoreDocument((await res.json()) as ApiDocument);
           addDocument(doc);
+          anyUploaded = true;
         } catch (err) {
-          setUploadError(err instanceof Error ? err.message : 'Upload failed');
+          setUploadError(getApiErrorMessage(err, ERROR_MESSAGES.uploadFailed));
         }
       }
 
       setUploading(false);
+      if (anyUploaded) {
+        toast.success(UPLOAD_STATUS.safeToLeave);
+      }
       // The documents query re-polls while anything is PENDING/PROCESSING.
       invalidateDocuments();
     },
@@ -109,14 +122,24 @@ const UploadArea = () => {
             transition={{ duration: 0.2 }}
             className="w-16 h-16 rounded-2xl bg-primary/10 flex items-center justify-center mx-auto mb-6"
           >
-            <Upload className="w-8 h-8 text-primary" />
+            {isUploading ? (
+              <Loader2 className="w-8 h-8 text-primary animate-spin" aria-hidden="true" />
+            ) : (
+              <Upload className="w-8 h-8 text-primary" />
+            )}
           </motion.div>
 
           <h3 className="text-xl font-semibold mb-2">
-            {isDragOver ? 'Drop your PDF here' : 'Upload a document'}
+            {isUploading
+              ? 'Uploading your PDF'
+              : isDragOver
+                ? 'Drop your PDF here'
+                : 'Upload a document'}
           </h3>
-          <p className="text-muted-foreground mb-6">
-            Drag and drop your PDF file, or click to browse
+          <p className="text-muted-foreground mb-6" role="status">
+            {isUploading
+              ? UPLOAD_STATUS.keepTabOpen
+              : 'Drag and drop your PDF file, or click to browse'}
           </p>
 
           <input
@@ -153,6 +176,7 @@ const UploadArea = () => {
               variant="ghost"
               size="icon"
               onClick={() => setUploadError(null)}
+              aria-label="Dismiss error"
               className="text-destructive hover:bg-destructive/20 shrink-0"
             >
               <X className="w-4 h-4" />

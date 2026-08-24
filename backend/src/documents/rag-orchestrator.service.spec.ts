@@ -1,4 +1,13 @@
-import { buildRagDebug } from './rag-orchestrator.service.js';
+import {
+  buildRagDebug,
+  RagOrchestratorService,
+  type RagStreamEvent,
+} from './rag-orchestrator.service.js';
+import type { RetrievalService } from './retrieval.service.js';
+import type { PromptService } from '../rag/prompt.service.js';
+import type { LlmService } from '../rag/llm.service.js';
+import type { ChatCacheService } from '../rag/chat-cache.service.js';
+import type { EmbeddingService } from '../embedding/embedding.service.js';
 
 const baseArgs = {
   cacheStatus: 'miss' as const,
@@ -127,5 +136,119 @@ describe('buildRagDebug (debug gating + assembly)', () => {
     expect(out?.cacheStatus).toBe('semantic');
     expect(out?.semanticSimilarity).toBe(0.97);
     expect(out?.timings.llmFirstTokenMs).toBe(250.1);
+  });
+});
+
+/**
+ * Regression: an aborted or errored stream must NOT poison the semantic
+ * cache — chatCache.store is called only on clean completion.
+ */
+describe('streamAnswer cache gating', () => {
+  const chunk = {
+    chunkId: 'c1',
+    content: 'The sky is blue.',
+    score: 0.9,
+    chunkIndex: 0,
+    pageStart: 1,
+    pageEnd: 1,
+    documentId: 'doc-1',
+  };
+
+  function makeService(tokens: string[], failAfter?: number) {
+    const store = jest.fn().mockResolvedValue(undefined);
+    const chatCache = {
+      getExact: jest.fn().mockResolvedValue(null),
+      getSemantic: jest.fn().mockResolvedValue(null),
+      getQueryEmbedding: jest.fn().mockResolvedValue(null),
+      storeQueryEmbedding: jest.fn().mockResolvedValue(undefined),
+      store,
+    } as unknown as ChatCacheService;
+    const retrievalService = {
+      retrieve: jest.fn().mockResolvedValue([chunk]),
+    } as unknown as RetrievalService;
+    const promptService = {
+      buildRagMessages: jest.fn().mockReturnValue({
+        messages: [{ role: 'user', content: 'q' }],
+        includedPositions: [0],
+      }),
+    } as unknown as PromptService;
+    const llmService = {
+      // eslint-disable-next-line @typescript-eslint/require-await
+      streamMessages: async function* (): AsyncGenerator<string> {
+        for (let i = 0; i < tokens.length; i++) {
+          if (failAfter !== undefined && i === failAfter) {
+            throw new Error('provider blew up');
+          }
+          yield tokens[i];
+        }
+      },
+    } as unknown as LlmService;
+    const embeddingService = {
+      embed: jest.fn().mockResolvedValue([0.1, 0.2]),
+    } as unknown as EmbeddingService;
+    const service = new RagOrchestratorService(
+      retrievalService,
+      promptService,
+      llmService,
+      chatCache,
+      embeddingService,
+    );
+    return { service, store };
+  }
+
+  const input = { userId: 'u1', documentId: 'doc-1', question: 'why blue?' };
+
+  async function drain(
+    gen: AsyncGenerator<RagStreamEvent>,
+    abortAfterDeltas?: { controller: AbortController; count: number },
+  ): Promise<RagStreamEvent[]> {
+    const events: RagStreamEvent[] = [];
+    let deltas = 0;
+    for await (const ev of gen) {
+      events.push(ev);
+      if (ev.type === 'delta') {
+        deltas += 1;
+        if (abortAfterDeltas && deltas === abortAfterDeltas.count) {
+          abortAfterDeltas.controller.abort();
+        }
+      }
+    }
+    return events;
+  }
+
+  it('stores on clean completion', async () => {
+    const { service, store } = makeService(['The sky ', 'is blue.']);
+    const events = await drain(service.streamAnswer(input));
+    expect(events.at(-1)?.type).toBe('done');
+    expect(store).toHaveBeenCalledTimes(1);
+    // store(scope, settingsKey, question, embedding, display, sources, followUps)
+    expect(store).toHaveBeenCalledWith(
+      'doc-1',
+      'k4',
+      'why blue?',
+      [0.1, 0.2],
+      'The sky is blue.',
+      expect.any(Array),
+      [],
+    );
+  });
+
+  it('does NOT store when the client aborts mid-stream', async () => {
+    const { service, store } = makeService(['The sky ', 'is blue.']);
+    const controller = new AbortController();
+    const events = await drain(service.streamAnswer(input, controller.signal), {
+      controller,
+      count: 1,
+    });
+    expect(events.at(-1)?.type).toBe('done');
+    expect(store).not.toHaveBeenCalled();
+  });
+
+  it('does NOT store when the provider stream errors mid-answer', async () => {
+    const { service, store } = makeService(['The sky ', 'is blue.'], 1);
+    const events = await drain(service.streamAnswer(input));
+    expect(events.some((e) => e.type === 'error')).toBe(true);
+    expect(events.at(-1)?.type).toBe('done');
+    expect(store).not.toHaveBeenCalled();
   });
 });

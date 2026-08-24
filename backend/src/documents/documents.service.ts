@@ -65,19 +65,31 @@ export class DocumentsService {
 
     const relativePath = path.join(UPLOADS_DIR, `${document.id}.pdf`);
     const absolutePath = path.join(process.cwd(), relativePath);
-    await mkdir(path.dirname(absolutePath), { recursive: true });
-    await writeFile(absolutePath, file.buffer, { flag: 'w' });
+    let documentWithPath: PrismaDocument;
+    try {
+      await mkdir(path.dirname(absolutePath), { recursive: true });
+      await writeFile(absolutePath, file.buffer, { flag: 'w' });
 
-    const documentWithPath = await this.prisma.document.update({
-      where: { id: document.id },
-      data: { filePath: relativePath },
-    });
+      documentWithPath = await this.prisma.document.update({
+        where: { id: document.id },
+        data: { filePath: relativePath },
+      });
 
-    await this.documentQueue.add(
-      'process',
-      { documentId: document.id, userId },
-      { attempts: 3, backoff: { type: 'exponential', delay: 2000 } },
-    );
+      await this.documentQueue.add(
+        'process',
+        { documentId: document.id, userId },
+        { attempts: 3, backoff: { type: 'exponential', delay: 2000 } },
+      );
+    } catch (err) {
+      // A row without a queued job would sit as a "Pending" card forever.
+      // Undo the row (and file) so a failed upload leaves nothing behind,
+      // then let the client see the failure and retry.
+      await this.prisma.document
+        .delete({ where: { id: document.id } })
+        .catch(() => undefined);
+      await unlink(absolutePath).catch(() => undefined);
+      throw err;
+    }
     this.logger.log(
       `Document ${document.id} queued for processing. Ensure Redis is running; watch for "processed successfully" or "processing failed" in logs.`,
     );

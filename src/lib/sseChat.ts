@@ -6,6 +6,8 @@
  * Does not throw on abort.
  */
 
+import { checkSessionExpired, ERROR_MESSAGES } from './errorMessages';
+
 export interface ChatSource {
   /** 1-based citation number matching [n] markers in the answer. */
   marker?: number;
@@ -143,7 +145,14 @@ export async function streamChat(
   if (!res.ok) {
     if (signal?.aborted) return;
     if (res.status === 401) {
-      callbacks.onError('Session expired, please log in again');
+      // Route through the shared guard (clears auth + toasts once).
+      try {
+        checkSessionExpired(res);
+      } catch (err) {
+        callbacks.onError(
+          err instanceof Error ? err.message : ERROR_MESSAGES.sessionExpired,
+        );
+      }
       return;
     }
     const text = await res.text();
