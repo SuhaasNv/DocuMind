@@ -364,6 +364,27 @@ See [docs/CASE-STUDY-DEPLOYMENT.md](docs/CASE-STUDY-DEPLOYMENT.md) for a full de
 
 ---
 
+## Connect to Claude
+
+DocuMind exposes an MCP (Model Context Protocol) server at `POST /mcp`, authenticated with personal API tokens (`Settings → API Tokens`, format `dm_...`, shown once at creation). It offers three read-only tools: `list_documents`, `search_documents`, and `ask_document`.
+
+- **claude.ai** — Settings → Connectors → Add custom connector → paste `https://<backend>/mcp` and authorize with your token
+- **Claude Code** — `claude mcp add --transport http documind https://<backend>/mcp --header "Authorization: Bearer dm_..."`
+- **Claude Desktop** — add to `claude_desktop_config.json`:
+
+```json
+{
+  "mcpServers": {
+    "documind": {
+      "command": "npx",
+      "args": ["-y", "mcp-remote", "https://<backend>/mcp", "--header", "Authorization: Bearer dm_..."]
+    }
+  }
+}
+```
+
+---
+
 ## Documentation
 
 | Document | Description |

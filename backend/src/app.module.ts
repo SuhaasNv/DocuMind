@@ -17,6 +17,8 @@ import { InsightsModule } from './insights/insights.module.js';
 import { ShareModule } from './share/share.module.js';
 import { ConversationsModule } from './conversations/conversations.module.js';
 import { MeModule } from './me/me.module.js';
+import { ApiTokensModule } from './api-tokens/api-tokens.module.js';
+import { McpModule } from './mcp/mcp.module.js';
 
 @Module({
   imports: [
@@ -45,6 +47,8 @@ import { MeModule } from './me/me.module.js';
     ShareModule,
     ConversationsModule,
     MeModule,
+    ApiTokensModule,
+    McpModule,
   ],
   providers: [
     { provide: APP_GUARD, useClass: ThrottlerGuard },

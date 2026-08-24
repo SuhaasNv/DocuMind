@@ -25,7 +25,8 @@ import { stopAllChatStreams } from '@/lib/chatStream';
 import { usePreferencesStore } from '@/stores/usePreferencesStore';
 import { getApiBaseUrl, APP_VERSION, APP_ENV } from '@/lib/api';
 import Header from '@/components/app/Header';
-import { User, Shield, Key, Settings2, Server, LogOut, Trash2, Link2, Copy, Ban } from 'lucide-react';
+import ApiTokensCard from '@/components/app/ApiTokensCard';
+import { User, Shield, Key, Settings2, Server, LogOut, Trash2, Link2, Copy, Ban, Plug } from 'lucide-react';
 
 interface SharedLink {
   id: string;
@@ -479,6 +480,31 @@ const SettingsPage = () => {
                     <p className="font-mono text-xs capitalize">{APP_ENV}</p>
                   </div>
                 </div>
+              </CardContent>
+            </Card>
+
+            {/* API tokens (MCP connector) */}
+            <ApiTokensCard accessToken={accessToken ?? ''} />
+
+            {/* Connect Claude */}
+            <Card>
+              <CardHeader className="pb-3">
+                <CardTitle className="flex items-center gap-2 text-base">
+                  <Plug className="w-4 h-4 text-primary" />
+                  Connect Claude
+                </CardTitle>
+                <CardDescription>
+                  Use your token to connect Claude to your documents via MCP.
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                <p className="text-muted-foreground text-xs mb-3">
+                  Works with claude.ai custom connectors, Claude Code, and
+                  Claude Desktop. Setup instructions are on the landing page.
+                </p>
+                <Button variant="outline" size="sm" asChild>
+                  <a href="/#connect-claude">View setup instructions</a>
+                </Button>
               </CardContent>
             </Card>
           </div>

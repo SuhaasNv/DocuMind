@@ -37,22 +37,23 @@ model User {
   insights      Insight[]
   sharedAnswers SharedAnswer[]
   conversations Conversation[]
+  apiTokens     ApiToken[]
 
   @@map("users")
 }
 
 model Document {
-  id         String         @id @default(cuid())
-  userId     String         @map("user_id")
-  name       String
-  status     DocumentStatus @default(PENDING)
-  progress   Int            @default(0)
-  size       Int? // bytes
-  filePath   String?        @map("file_path") // relative path under uploads dir
-  pageCount  Int?           @map("page_count")
-  chunkCount Int?           @map("chunk_count")
+  id                 String               @id @default(cuid())
+  userId             String               @map("user_id")
+  name               String
+  status             DocumentStatus       @default(PENDING)
+  progress           Int                  @default(0)
+  size               Int? // bytes
+  filePath           String?              @map("file_path") // relative path under uploads dir
+  pageCount          Int?                 @map("page_count")
+  chunkCount         Int?                 @map("chunk_count")
   // EXTRACTING | CHUNKING | EMBEDDING | FINALIZING while PROCESSING; null otherwise
-  stage         String?
+  stage              String?
   // Safe, user-facing message set when processing fails (never raw errors)
   failureReason      String?              @map("failure_reason")
   summary            String?              @db.Text // ~3-sentence LLM summary (instant activation)
@@ -70,16 +71,16 @@ model Document {
 }
 
 model Conversation {
-  id           String      @id @default(cuid())
-  userId       String      @map("user_id")
-  documentId   String?     @map("document_id")
-  collectionId String?     @map("collection_id")
-  title        String      @db.VarChar(200)
-  createdAt    DateTime    @default(now()) @map("created_at")
-  updatedAt    DateTime    @updatedAt @map("updated_at")
-  user         User        @relation(fields: [userId], references: [id], onDelete: Cascade)
-  document     Document?   @relation(fields: [documentId], references: [id], onDelete: SetNull)
-  collection   Collection? @relation(fields: [collectionId], references: [id], onDelete: SetNull)
+  id           String                @id @default(cuid())
+  userId       String                @map("user_id")
+  documentId   String?               @map("document_id")
+  collectionId String?               @map("collection_id")
+  title        String                @db.VarChar(200)
+  createdAt    DateTime              @default(now()) @map("created_at")
+  updatedAt    DateTime              @updatedAt @map("updated_at")
+  user         User                  @relation(fields: [userId], references: [id], onDelete: Cascade)
+  document     Document?             @relation(fields: [documentId], references: [id], onDelete: SetNull)
+  collection   Collection?           @relation(fields: [collectionId], references: [id], onDelete: SetNull)
   messages     ConversationMessage[]
 
   @@index([userId, updatedAt])
@@ -127,10 +128,10 @@ model DocumentChunk {
 
 // Phase 9: named groups of a user's documents for cross-document chat.
 model Collection {
-  id        String               @id @default(cuid())
-  userId    String               @map("user_id")
-  name      String               @db.VarChar(120)
-  createdAt DateTime             @default(now()) @map("created_at")
+  id            String               @id @default(cuid())
+  userId        String               @map("user_id")
+  name          String               @db.VarChar(120)
+  createdAt     DateTime             @default(now()) @map("created_at")
   user          User                 @relation(fields: [userId], references: [id], onDelete: Cascade)
   documents     CollectionDocument[]
   conversations Conversation[]
@@ -210,4 +211,22 @@ model AdminAuditLog {
 
   @@index([createdAt])
   @@map("admin_audit_log")
+}
+
+// Personal API token for the MCP connector. Only the sha256 hex hash of the
+// plaintext token is stored; last4 is a safe display hint (last 4 chars of
+// the plaintext, shown as "dm_...abcd" in the UI).
+model ApiToken {
+  id         String    @id @default(cuid())
+  userId     String    @map("user_id")
+  name       String    @db.VarChar(60)
+  tokenHash  String    @unique @map("token_hash")
+  last4      String
+  lastUsedAt DateTime? @map("last_used_at")
+  revoked    Boolean   @default(false)
+  createdAt  DateTime  @default(now()) @map("created_at")
+  user       User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@map("api_tokens")
 }

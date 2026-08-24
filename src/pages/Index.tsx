@@ -1,6 +1,7 @@
 import { motion } from 'framer-motion';
 import Hero from '@/components/landing/Hero';
 import Features from '@/components/landing/Features';
+import ConnectClaude from '@/components/landing/ConnectClaude';
 import CTA from '@/components/landing/CTA';
 
 const Index = () => {
@@ -19,6 +20,7 @@ const Index = () => {
       >
         <Hero />
         <Features />
+        <ConnectClaude />
         <CTA />
       </motion.main>
 
