@@ -40,6 +40,8 @@ import type { RetrievalResponseDto } from './dto/retrieval-response.dto.js';
 import type { ChatResponseDto } from './dto/chat-response.dto.js';
 import { RetrievalQueryDto } from './dto/retrieval-query.dto.js';
 import { ChatRequestDto } from './dto/chat-request.dto.js';
+import type { ChatSourceDto } from './dto/chat-response.dto.js';
+import { ConversationsService } from '../conversations/conversations.service.js';
 
 const PDF_MIME = 'application/pdf';
 const MAX_SIZE = 50 * 1024 * 1024; // 50MB
@@ -56,6 +58,7 @@ export class DocumentsController {
     private readonly documentsService: DocumentsService,
     private readonly retrievalService: RetrievalService,
     private readonly ragOrchestratorService: RagOrchestratorService,
+    private readonly conversationsService: ConversationsService,
   ) {}
 
   @Post('upload')
@@ -173,13 +176,28 @@ export class DocumentsController {
         `Document is not ready for chat. Current status: ${document.status}. Wait until processing is complete.`,
       );
     }
-    return this.ragOrchestratorService.chat({
+    // Persist the user message up front; the assistant message after the
+    // answer completes. Cached replays are real turns and persist too.
+    const conversationId = await this.conversationsService.beginTurn(
+      user.sub,
+      { documentId: id },
+      dto.conversationId,
+      dto.question,
+    );
+    const response = await this.ragOrchestratorService.chat({
       userId: user.sub,
       documentId: id,
       question: dto.question,
       history: dto.history,
       debug: dto.debug,
     });
+    await this.conversationsService.completeTurn(
+      conversationId,
+      response.answer,
+      response.sources,
+      false,
+    );
+    return { ...response, conversationId };
   }
 
   /**
@@ -203,6 +221,15 @@ export class DocumentsController {
       );
     }
 
+    // Validate/create the conversation BEFORE the SSE stream starts so a bad
+    // conversationId surfaces as a normal 400/403/404. Persists the user turn.
+    const conversationId = await this.conversationsService.beginTurn(
+      user.sub,
+      { documentId: id },
+      dto.conversationId,
+      dto.question,
+    );
+
     const ac = new AbortController();
     req.on('close', () => {
       ac.abort();
@@ -214,6 +241,10 @@ export class DocumentsController {
     res.setHeader('X-Accel-Buffering', 'no');
     res.flushHeaders();
 
+    let fullAnswer = '';
+    let sources: ChatSourceDto[] = [];
+    let doneReceived = false;
+    let errored = false;
     try {
       for await (const event of this.ragOrchestratorService.streamAnswer(
         {
@@ -227,11 +258,17 @@ export class DocumentsController {
       )) {
         if (ac.signal.aborted || res.writableEnded) break;
         if (event.type === 'delta') {
+          fullAnswer += event.data;
           res.write(`event: delta\ndata: ${JSON.stringify(event.data)}\n\n`);
         } else if (event.type === 'error') {
+          errored = true;
           res.write(`event: error\ndata: ${JSON.stringify(event.data)}\n\n`);
         } else {
-          res.write(`event: done\ndata: ${JSON.stringify(event.data)}\n\n`);
+          doneReceived = true;
+          sources = event.data.sources;
+          res.write(
+            `event: done\ndata: ${JSON.stringify({ ...event.data, conversationId })}\n\n`,
+          );
         }
         if (
           typeof (res as Response & { flush?: () => void }).flush === 'function'
@@ -240,6 +277,7 @@ export class DocumentsController {
         }
       }
     } catch {
+      errored = true;
       if (!ac.signal.aborted && !res.writableEnded) {
         res.write(
           `event: error\ndata: ${JSON.stringify({ message: 'Stream error' })}\n\n`,
@@ -249,6 +287,14 @@ export class DocumentsController {
       if (!res.writableEnded) {
         res.end();
       }
+      // Persist the assistant turn after the stream completes; an aborted or
+      // errored stream keeps the partial answer with truncated: true.
+      await this.conversationsService.completeTurn(
+        conversationId,
+        fullAnswer,
+        sources,
+        !doneReceived || errored,
+      );
     }
   }
 

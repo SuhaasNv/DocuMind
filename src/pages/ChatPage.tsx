@@ -18,6 +18,7 @@ import { createInsight } from '@/lib/insights';
 import { citationIndex } from '@/components/chat/markdownComponents';
 import { getApiBaseUrlOrThrow, getApiErrorMessage } from '@/lib/api';
 import { toast } from 'sonner';
+import { useConversationHydration } from '@/hooks/useConversationHydration';
 
 const SCROLL_THRESHOLD_PX = 120;
 
@@ -90,6 +91,9 @@ const ChatPage = () => {
     ? viewerSource?.documentName ?? 'Document'
     : document?.name ?? '';
 
+  // Load persisted messages from the server when this chat has none locally.
+  useConversationHydration(chatKey);
+
   const scrollToBottom = useCallback((behavior: ScrollBehavior = 'smooth') => {
     const container = scrollContainerRef.current;
     if (container) {
@@ -129,6 +133,11 @@ const ChatPage = () => {
     if (chatKey) {
       stopChatStream(chatKey);
       clearConversation(chatKey);
+      // Drop the server conversation id so the next message starts a fresh
+      // one, and keep the key marked hydrated so the old chat is not re-loaded.
+      const s = useAppStore.getState();
+      s.setServerConversationId(chatKey, null);
+      s.markChatHydrated(chatKey);
     }
   }, [chatKey, clearConversation]);
 

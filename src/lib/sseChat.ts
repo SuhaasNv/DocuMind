@@ -63,7 +63,12 @@ function parseDebugPayload(value: unknown): RetrievalDebug | undefined {
 
 export interface StreamChatCallbacks {
   onDelta: (chunk: string) => void;
-  onDone: (sources: ChatSource[], followUps: string[], debug?: RetrievalDebug) => void;
+  onDone: (
+    sources: ChatSource[],
+    followUps: string[],
+    debug?: RetrievalDebug,
+    conversationId?: string,
+  ) => void;
   onError: (message: string) => void;
 }
 
@@ -84,6 +89,8 @@ export interface StreamChatOptions {
   history?: ChatHistoryTurn[];
   /** When true, ask the backend for retrieval debug info on the done event. */
   debug?: boolean;
+  /** Server conversation to append this turn to (absent → server creates one). */
+  conversationId?: string;
   signal?: AbortSignal;
   getToken: () => string | null;
   baseUrl: string;
@@ -123,6 +130,7 @@ export async function streamChat(
         history: options.history,
         // Undefined when off, so the key is omitted from the payload entirely.
         debug: options.debug ? true : undefined,
+        conversationId: options.conversationId,
       }),
       signal,
     });
@@ -196,11 +204,13 @@ export async function streamChat(
               sources?: ChatSource[];
               followUps?: unknown;
               debug?: unknown;
+              conversationId?: string;
             };
             callbacks.onDone(
               Array.isArray(payload.sources) ? payload.sources : [],
               parseFollowUpsPayload(payload.followUps),
               parseDebugPayload(payload.debug),
+              payload.conversationId,
             );
           } catch {
             callbacks.onDone([], []);
@@ -234,11 +244,13 @@ export async function streamChat(
             sources?: ChatSource[];
             followUps?: unknown;
             debug?: unknown;
+            conversationId?: string;
           };
           callbacks.onDone(
             Array.isArray(payload.sources) ? payload.sources : [],
             parseFollowUpsPayload(payload.followUps),
             parseDebugPayload(payload.debug),
+            payload.conversationId,
           );
         } catch {
           callbacks.onDone([], []);

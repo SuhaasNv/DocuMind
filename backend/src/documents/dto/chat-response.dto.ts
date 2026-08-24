@@ -65,4 +65,6 @@ export interface ChatResponseDto {
   followUps?: string[];
   /** Present only when the request set debug: true. Never cached. */
   debug?: RagDebugDto;
+  /** Persisted conversation this turn was recorded under. */
+  conversationId?: string;
 }

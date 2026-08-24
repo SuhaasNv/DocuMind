@@ -15,6 +15,7 @@ import { HttpExceptionFilter } from './common/filters/http-exception.filter.js';
 import { AdminModule } from './admin/admin.module.js';
 import { InsightsModule } from './insights/insights.module.js';
 import { ShareModule } from './share/share.module.js';
+import { ConversationsModule } from './conversations/conversations.module.js';
 
 @Module({
   imports: [
@@ -41,6 +42,7 @@ import { ShareModule } from './share/share.module.js';
     AdminModule,
     InsightsModule,
     ShareModule,
+    ConversationsModule,
   ],
   providers: [
     { provide: APP_GUARD, useClass: ThrottlerGuard },

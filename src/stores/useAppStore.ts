@@ -95,6 +95,14 @@ interface AppState {
   // Chat state
   conversations: Record<string, Conversation>;
   currentConversationId: string | null;
+  /** Server-persisted conversation id per chat key (documentId). */
+  serverConversationIds: Record<string, string>;
+  /** Chat keys whose messages were hydrated (or intentionally reset). */
+  hydratedChatKeys: Record<string, boolean>;
+  setServerConversationId: (key: string, id: string | null) => void;
+  markChatHydrated: (key: string) => void;
+  /** Replace a conversation's messages wholesale (server hydration). */
+  setConversationMessages: (documentId: string, messages: Message[]) => void;
 
   // UI state
   isSidebarOpen: boolean;
@@ -157,6 +165,28 @@ export const useAppStore = create<AppState>()(
       })),
       conversations: {},
       currentConversationId: null,
+      serverConversationIds: {},
+      hydratedChatKeys: {},
+      setServerConversationId: (key, id) => set((state) => {
+        const serverConversationIds = { ...state.serverConversationIds };
+        if (id === null) delete serverConversationIds[key];
+        else serverConversationIds[key] = id;
+        return { serverConversationIds };
+      }),
+      markChatHydrated: (key) => set((state) => ({
+        hydratedChatKeys: { ...state.hydratedChatKeys, [key]: true },
+      })),
+      setConversationMessages: (documentId, messages) => set((state) => ({
+        conversations: {
+          ...state.conversations,
+          [documentId]: {
+            id: state.conversations[documentId]?.id ?? `conv-${documentId}`,
+            documentId,
+            createdAt: state.conversations[documentId]?.createdAt ?? new Date(),
+            messages,
+          },
+        },
+      })),
       isSidebarOpen: true,
       isMobileMenuOpen: false,
       isUploading: false,

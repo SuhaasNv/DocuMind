@@ -36,6 +36,7 @@ model User {
   collections   Collection[]
   insights      Insight[]
   sharedAnswers SharedAnswer[]
+  conversations Conversation[]
 
   @@map("users")
 }
@@ -62,9 +63,41 @@ model Document {
   chunks             DocumentChunk[]
   collections        CollectionDocument[]
   insights           Insight[]
+  conversations      Conversation[]
 
   @@index([userId])
   @@map("documents")
+}
+
+model Conversation {
+  id           String      @id @default(cuid())
+  userId       String      @map("user_id")
+  documentId   String?     @map("document_id")
+  collectionId String?     @map("collection_id")
+  title        String      @db.VarChar(200)
+  createdAt    DateTime    @default(now()) @map("created_at")
+  updatedAt    DateTime    @updatedAt @map("updated_at")
+  user         User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  document     Document?   @relation(fields: [documentId], references: [id], onDelete: SetNull)
+  collection   Collection? @relation(fields: [collectionId], references: [id], onDelete: SetNull)
+  messages     ConversationMessage[]
+
+  @@index([userId, updatedAt])
+  @@map("conversations")
+}
+
+model ConversationMessage {
+  id             String       @id @default(cuid())
+  conversationId String       @map("conversation_id")
+  role           String // 'user' | 'assistant'
+  content        String       @db.Text
+  sources        Json?
+  truncated      Boolean      @default(false)
+  createdAt      DateTime     @default(now()) @map("created_at")
+  conversation   Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+
+  @@index([conversationId])
+  @@map("conversation_messages")
 }
 
 // Embedding column is vector(dimension); use raw SQL for insert/query. Dimension from EMBEDDING_DIMENSION env.
@@ -98,8 +131,9 @@ model Collection {
   userId    String               @map("user_id")
   name      String               @db.VarChar(120)
   createdAt DateTime             @default(now()) @map("created_at")
-  user      User                 @relation(fields: [userId], references: [id], onDelete: Cascade)
-  documents CollectionDocument[]
+  user          User                 @relation(fields: [userId], references: [id], onDelete: Cascade)
+  documents     CollectionDocument[]
+  conversations Conversation[]
 
   @@index([userId])
   @@map("collections")

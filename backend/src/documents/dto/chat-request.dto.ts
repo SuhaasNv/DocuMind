@@ -39,4 +39,14 @@ export class ChatRequestDto {
   @IsOptional()
   @IsBoolean()
   debug?: boolean;
+
+  /**
+   * Existing conversation to append this turn to. Must exist, be owned by
+   * the caller, and match the chat target; otherwise 400/403/404. When
+   * absent, a new conversation is created and its id is returned.
+   */
+  @IsOptional()
+  @IsString()
+  @MaxLength(64)
+  conversationId?: string;
 }

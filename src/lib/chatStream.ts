@@ -57,6 +57,8 @@ export async function sendChatMessage(documentId: string, content: string): Prom
     timestamp: new Date(),
   };
   store.addMessage(documentId, userMessage);
+  // Sending a message defines this chat's content — never hydrate over it.
+  store.markChatHydrated(documentId);
 
   const assistantId = `msg-${Date.now() + 1}`;
   const assistantMessage: Message = {
@@ -143,7 +145,7 @@ export async function sendChatMessage(documentId: string, content: string): Prom
           fullContent += chunk;
           scheduleFlush();
         },
-        onDone: (sources, serverFollowUps, debug) => {
+        onDone: (sources, serverFollowUps, debug, conversationId) => {
           clearIdleTimer();
           if (signal.aborted) return;
           // Cache replays stream the already-stripped answer and carry the
@@ -157,6 +159,7 @@ export async function sendChatMessage(documentId: string, content: string): Prom
           const followUps = serverFollowUps.length > 0 ? serverFollowUps : parsed.followUps;
           if (followUps.length > 0) s.setMessageFollowUps(documentId, assistantId, followUps);
           if (debug) s.setMessageDebug(documentId, assistantId, debug);
+          if (conversationId) s.setServerConversationId(documentId, conversationId);
         },
         onError: (message) => {
           clearIdleTimer();
@@ -178,6 +181,7 @@ export async function sendChatMessage(documentId: string, content: string): Prom
         baseUrl,
         history,
         debug: usePreferencesStore.getState().showRetrievalDebug,
+        conversationId: store.serverConversationIds[documentId],
       },
     );
   } finally {
