@@ -35,8 +35,10 @@ import {
   Layers,
   ChevronDown,
   Circle,
+  Search,
 } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Input } from '@/components/ui/input';
 import {
   Table,
   TableBody,
@@ -119,6 +121,16 @@ function formatBytes(bytes?: number) {
   if (bytes < 1024) return `${bytes} B`;
   if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+}
+
+/** Debounce a changing value; used for server-side search inputs. */
+function useDebouncedValue<T>(value: T, delayMs: number): T {
+  const [debounced, setDebounced] = useState(value);
+  useEffect(() => {
+    const timer = setTimeout(() => setDebounced(value), delayMs);
+    return () => clearTimeout(timer);
+  }, [value, delayMs]);
+  return debounced;
 }
 
 function timeAgo(date: string | null) {
@@ -215,6 +227,18 @@ export default function AdminDashboard() {
   const [docPage, setDocPage] = useState(1);
   const [docStatusFilter, setDocStatusFilter] = useState<DocStatus | undefined>();
   const [jobState, setJobState] = useState<'active' | 'waiting' | 'failed' | 'completed' | 'delayed'>('active');
+  const [userSearch, setUserSearch] = useState('');
+  const [docSearch, setDocSearch] = useState('');
+  const debouncedUserSearch = useDebouncedValue(userSearch, 300);
+  const debouncedDocSearch = useDebouncedValue(docSearch, 300);
+
+  // A new search always starts from page 1.
+  useEffect(() => {
+    setUserPage(1);
+  }, [debouncedUserSearch]);
+  useEffect(() => {
+    setDocPage(1);
+  }, [debouncedDocSearch]);
 
   const enabled = !!accessToken && user?.role === 'ADMIN';
   const isAdmin = user?.role === 'ADMIN';
@@ -242,14 +266,15 @@ export default function AdminDashboard() {
   });
 
   const { data: usersData, isLoading: usersLoading, refetch: refetchUsers } = useQuery({
-    queryKey: ['adminUsers', userPage],
-    queryFn: () => getAllUsers(accessToken!, userPage, PAGE_SIZE),
+    queryKey: ['adminUsers', userPage, debouncedUserSearch],
+    queryFn: () => getAllUsers(accessToken!, userPage, PAGE_SIZE, debouncedUserSearch || undefined),
     enabled,
   });
 
   const { data: docsData, isLoading: docsLoading, refetch: refetchDocs } = useQuery({
-    queryKey: ['adminDocs', docPage, docStatusFilter],
-    queryFn: () => getAllDocuments(accessToken!, docPage, PAGE_SIZE, docStatusFilter),
+    queryKey: ['adminDocs', docPage, docStatusFilter, debouncedDocSearch],
+    queryFn: () =>
+      getAllDocuments(accessToken!, docPage, PAGE_SIZE, docStatusFilter, debouncedDocSearch || undefined),
     enabled,
   });
 
@@ -526,19 +551,30 @@ export default function AdminDashboard() {
         {activeTab === 'users' && (
           <Card className="border-border">
             <CardHeader className="pb-3">
-              <div className="flex flex-col gap-1">
-                <CardTitle className="text-base flex items-center gap-2">
-                  <Users className="w-4 h-4" />
-                  All Users
-                  {usersData && (
-                    <span className="text-sm font-normal text-muted-foreground">
-                      · {usersData.total} total
-                    </span>
-                  )}
-                </CardTitle>
-                <p className="text-xs text-muted-foreground">
-                  Change role or delete users from the Actions column. Admins cannot be deleted.
-                </p>
+              <div className="flex items-start justify-between flex-wrap gap-3">
+                <div className="flex flex-col gap-1">
+                  <CardTitle className="text-base flex items-center gap-2">
+                    <Users className="w-4 h-4" />
+                    All Users
+                    {usersData && (
+                      <span className="text-sm font-normal text-muted-foreground">
+                        · {usersData.total} total
+                      </span>
+                    )}
+                  </CardTitle>
+                  <p className="text-xs text-muted-foreground">
+                    Change role or delete users from the Actions column.
+                  </p>
+                </div>
+                <div className="relative w-full sm:w-64">
+                  <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground" />
+                  <Input
+                    value={userSearch}
+                    onChange={(e) => setUserSearch(e.target.value)}
+                    placeholder="Search name or email…"
+                    className="h-8 pl-8 text-sm"
+                  />
+                </div>
               </div>
             </CardHeader>
             <CardContent>
@@ -613,6 +649,17 @@ export default function AdminDashboard() {
                   )}
                 </CardTitle>
 
+                <div className="flex items-center gap-2 flex-wrap">
+                  <div className="relative w-full sm:w-64">
+                    <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground" />
+                    <Input
+                      value={docSearch}
+                      onChange={(e) => setDocSearch(e.target.value)}
+                      placeholder="Search name or owner email…"
+                      className="h-8 pl-8 text-sm"
+                    />
+                  </div>
+
                 {/* Status filter */}
                 <DropdownMenu>
                   <DropdownMenuTrigger asChild>
@@ -639,6 +686,7 @@ export default function AdminDashboard() {
                     ))}
                   </DropdownMenuContent>
                 </DropdownMenu>
+                </div>
               </div>
             </CardHeader>
             <CardContent>

@@ -134,11 +134,6 @@ export async function getAdminMetrics(accessToken: string): Promise<SystemMetric
   return apiFetch<SystemMetrics>(accessToken, '/admin/metrics');
 }
 
-/** @deprecated Use getAdminMetrics */
-export async function getAdminStats(accessToken: string) {
-  return apiFetch(accessToken, '/admin/stats');
-}
-
 // ── System Health ─────────────────────────────────────────────────────────
 
 export async function getSystemHealth(accessToken: string): Promise<SystemHealth> {
@@ -157,8 +152,11 @@ export async function getAllUsers(
   accessToken: string,
   page = 1,
   limit = 20,
+  search?: string,
 ): Promise<{ users: AdminUser[]; total: number; page: number; limit: number }> {
-  return apiFetch(accessToken, `/admin/users?page=${page}&limit=${limit}`);
+  const params = new URLSearchParams({ page: String(page), limit: String(limit) });
+  if (search) params.set('search', search);
+  return apiFetch(accessToken, `/admin/users?${params}`);
 }
 
 export async function changeUserRole(
@@ -184,9 +182,11 @@ export async function getAllDocuments(
   page = 1,
   limit = 20,
   status?: DocStatus,
+  search?: string,
 ): Promise<{ documents: AdminDocument[]; total: number; page: number; limit: number }> {
   const params = new URLSearchParams({ page: String(page), limit: String(limit) });
   if (status) params.set('status', status);
+  if (search) params.set('search', search);
   return apiFetch(accessToken, `/admin/documents?${params}`);
 }
 

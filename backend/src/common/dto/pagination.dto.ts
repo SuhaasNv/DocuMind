@@ -20,3 +20,24 @@ export class PaginationDto {
   @Max(100000)
   skip?: number = 0;
 }
+
+/**
+ * Page-based pagination for the admin console (its API/frontend speak
+ * page/limit, not take/skip): page >= 1 (default 1), limit 1-100
+ * (default 20). Non-numeric input fails validation with a 400.
+ */
+export class PagePaginationDto {
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  @Max(100000)
+  page?: number = 1;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  @Max(100)
+  limit?: number = 20;
+}

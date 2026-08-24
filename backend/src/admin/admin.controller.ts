@@ -7,15 +7,21 @@ import {
   Body,
   UseGuards,
   Query,
-  BadRequestException,
 } from '@nestjs/common';
 import { AdminService } from './admin.service.js';
 import { RolesGuard } from '../common/guards/roles.guard.js';
 import { Roles } from '../common/decorators/roles.decorator.js';
-import { Role, DocumentStatus } from '../../generated/prisma/client.js';
+import {
+  CurrentUser,
+  type JwtPayload,
+} from '../common/decorators/current-user.decorator.js';
+import { Role } from '../../generated/prisma/client.js';
 import { UpdateRoleDto } from './dto/update-role.dto.js';
-
-const VALID_STATUSES = Object.values(DocumentStatus);
+import {
+  AdminUsersQueryDto,
+  AdminDocumentsQueryDto,
+} from './dto/list-query.dto.js';
+import { PagePaginationDto } from '../common/dto/pagination.dto.js';
 
 @Controller('admin')
 @UseGuards(RolesGuard)
@@ -28,12 +34,6 @@ export class AdminController {
   @Get('metrics')
   async getMetrics() {
     return this.adminService.getMetrics();
-  }
-
-  /** Legacy – keep for backward compat with existing frontend */
-  @Get('stats')
-  async getStats() {
-    return this.adminService.getStats();
   }
 
   // ── System Health ─────────────────────────────────────────────────────────
@@ -51,55 +51,41 @@ export class AdminController {
   }
 
   @Get('users')
-  async getAllUsers(
-    @Query('page') page: string,
-    @Query('limit') limit: string,
-  ) {
-    return this.adminService.getAllUsers(
-      parseInt(page) || 1,
-      parseInt(limit) || 20,
-    );
+  async getAllUsers(@Query() query: AdminUsersQueryDto) {
+    return this.adminService.getAllUsers(query.page, query.limit, query.search);
   }
 
   @Patch('users/:id/role')
-  async updateUserRole(@Param('id') id: string, @Body() dto: UpdateRoleDto) {
-    return this.adminService.updateUserRole(id, dto.role);
+  async updateUserRole(
+    @CurrentUser() user: JwtPayload,
+    @Param('id') id: string,
+    @Body() dto: UpdateRoleDto,
+  ) {
+    return this.adminService.updateUserRole(user.sub, id, dto.role);
   }
 
   @Delete('users/:id')
-  async deleteUser(@Param('id') id: string) {
-    return this.adminService.deleteUser(id);
+  async deleteUser(@CurrentUser() user: JwtPayload, @Param('id') id: string) {
+    return this.adminService.deleteUser(user.sub, id);
   }
 
   // ── Documents ─────────────────────────────────────────────────────────────
 
   @Get('documents')
-  async getAllDocuments(
-    @Query('page') page: string,
-    @Query('limit') limit: string,
-    @Query('status') status?: string,
-  ) {
-    let docStatus: DocumentStatus | undefined;
-    if (status) {
-      if (!VALID_STATUSES.includes(status as DocumentStatus)) {
-        throw new BadRequestException(
-          `Invalid status. Must be one of: ${VALID_STATUSES.join(', ')}`,
-        );
-      }
-      docStatus = status as DocumentStatus;
-    }
+  async getAllDocuments(@Query() query: AdminDocumentsQueryDto) {
     return this.adminService.getAllDocuments(
-      parseInt(page) || 1,
-      parseInt(limit) || 20,
-      docStatus,
+      query.page,
+      query.limit,
+      query.status,
+      query.search,
     );
   }
 
   // ── Job Queue ─────────────────────────────────────────────────────────────
 
   @Get('jobs')
-  async getJobs() {
-    return this.adminService.getJobStats();
+  async getJobs(@Query() query: PagePaginationDto) {
+    return this.adminService.getJobStats(query.page, query.limit);
   }
 
   // ── RAG Analytics ─────────────────────────────────────────────────────────

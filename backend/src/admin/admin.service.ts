@@ -1,19 +1,34 @@
 import {
   Injectable,
+  Logger,
   NotFoundException,
-  ForbiddenException,
+  ConflictException,
 } from '@nestjs/common';
 import { InjectQueue } from '@nestjs/bullmq';
 import { Queue } from 'bullmq';
+import { unlink } from 'node:fs/promises';
+import path from 'node:path';
 import { PrismaService } from '../prisma/prisma.service.js';
+import { ChatCacheService } from '../rag/chat-cache.service.js';
+import { collectionCacheScope } from '../collections/collections.service.js';
 import { DocumentStatus, Role } from '../../generated/prisma/client.js';
 
 const QUEUE_NAME = 'document-processing';
+const JOB_STATES = [
+  'active',
+  'waiting',
+  'failed',
+  'completed',
+  'delayed',
+] as const;
 
 @Injectable()
 export class AdminService {
+  private readonly logger = new Logger(AdminService.name);
+
   constructor(
     private readonly prisma: PrismaService,
+    private readonly chatCache: ChatCacheService,
     @InjectQueue(QUEUE_NAME) private readonly docQueue: Queue,
   ) {}
 
@@ -82,19 +97,6 @@ export class AdminService {
     };
   }
 
-  // ── Legacy stats (kept for backward compat) ───────────────────────────────
-
-  async getStats() {
-    const metrics = await this.getMetrics();
-    return {
-      totalUsers: metrics.totalUsers,
-      totalDocuments: metrics.totalDocuments,
-      onlineUsers: metrics.onlineUsers,
-      pendingDocuments: metrics.documentsByStatus.pending,
-      processingDocuments: metrics.documentsByStatus.processing,
-    };
-  }
-
   // ── Online users ──────────────────────────────────────────────────────────
 
   async getOnlineUsers() {
@@ -115,10 +117,20 @@ export class AdminService {
 
   // ── Users ─────────────────────────────────────────────────────────────────
 
-  async getAllUsers(page = 1, limit = 20) {
+  async getAllUsers(page = 1, limit = 20, search?: string) {
     const skip = (page - 1) * limit;
+    const trimmed = search?.trim();
+    const where = trimmed
+      ? {
+          OR: [
+            { name: { contains: trimmed, mode: 'insensitive' as const } },
+            { email: { contains: trimmed, mode: 'insensitive' as const } },
+          ],
+        }
+      : {};
     const [users, total] = await Promise.all([
       this.prisma.user.findMany({
+        where,
         skip,
         take: limit,
         select: {
@@ -132,42 +144,121 @@ export class AdminService {
         },
         orderBy: { createdAt: 'desc' },
       }),
-      this.prisma.user.count(),
+      this.prisma.user.count({ where }),
     ]);
     return { users, total, page, limit };
   }
 
-  async updateUserRole(targetId: string, role: Role) {
+  async updateUserRole(actingUserId: string, targetId: string, role: Role) {
+    if (actingUserId === targetId && role !== Role.ADMIN) {
+      throw new ConflictException('You cannot demote your own account');
+    }
     const target = await this.prisma.user.findUnique({
       where: { id: targetId },
     });
     if (!target) throw new NotFoundException('User not found');
+    if (target.role === Role.ADMIN && role !== Role.ADMIN) {
+      await this.assertNotLastAdmin('demote');
+    }
 
-    const updated = await this.prisma.user.update({
+    return this.prisma.user.update({
       where: { id: targetId },
       data: { role },
       select: { id: true, name: true, email: true, role: true },
     });
-    return updated;
   }
 
-  async deleteUser(targetId: string) {
+  /**
+   * Complete user deletion: DB rows (one delete — every user-owned table's
+   * FK is ON DELETE CASCADE, including shared_answers, verified in
+   * schema.prisma), uploaded files on disk (best-effort unlink), and chat
+   * cache scopes (per document + per owned collection).
+   */
+  async deleteUser(actingUserId: string, targetId: string) {
+    if (actingUserId === targetId) {
+      throw new ConflictException('You cannot delete your own account');
+    }
     const target = await this.prisma.user.findUnique({
       where: { id: targetId },
+      include: {
+        documents: { select: { id: true, filePath: true } },
+        collections: {
+          select: {
+            id: true,
+            documents: { select: { documentId: true } },
+          },
+        },
+      },
     });
     if (!target) throw new NotFoundException('User not found');
     if (target.role === Role.ADMIN) {
-      throw new ForbiddenException('Cannot delete admin accounts');
+      await this.assertNotLastAdmin('delete');
     }
+
     await this.prisma.user.delete({ where: { id: targetId } });
+
+    for (const doc of target.documents) {
+      if (!doc.filePath) continue;
+      try {
+        await unlink(path.join(process.cwd(), doc.filePath));
+      } catch (err) {
+        this.logger.warn(
+          `Failed to delete file for document ${doc.id} at ${doc.filePath}: ${err instanceof Error ? err.message : String(err)}`,
+        );
+      }
+    }
+
+    for (const doc of target.documents) {
+      void this.chatCache.invalidateScope(doc.id);
+    }
+    for (const col of target.collections) {
+      void this.chatCache.invalidateScope(
+        collectionCacheScope(
+          col.id,
+          col.documents.map((d) => d.documentId),
+        ),
+      );
+    }
     return { success: true };
+  }
+
+  /** 409 when the system has a single ADMIN left (demoting/deleting it would lock everyone out). */
+  private async assertNotLastAdmin(action: 'demote' | 'delete'): Promise<void> {
+    const admins = await this.prisma.user.count({
+      where: { role: Role.ADMIN },
+    });
+    if (admins <= 1) {
+      throw new ConflictException(
+        `Cannot ${action} the only remaining admin account`,
+      );
+    }
   }
 
   // ── Documents ─────────────────────────────────────────────────────────────
 
-  async getAllDocuments(page = 1, limit = 20, status?: DocumentStatus) {
+  async getAllDocuments(
+    page = 1,
+    limit = 20,
+    status?: DocumentStatus,
+    search?: string,
+  ) {
     const skip = (page - 1) * limit;
-    const where = status ? { status } : {};
+    const trimmed = search?.trim();
+    const where = {
+      ...(status ? { status } : {}),
+      ...(trimmed
+        ? {
+            OR: [
+              { name: { contains: trimmed, mode: 'insensitive' as const } },
+              {
+                user: {
+                  email: { contains: trimmed, mode: 'insensitive' as const },
+                },
+              },
+            ],
+          }
+        : {}),
+    };
 
     const [documents, total] = await Promise.all([
       this.prisma.document.findMany({
@@ -192,15 +283,14 @@ export class AdminService {
 
   // ── Jobs ──────────────────────────────────────────────────────────────────
 
-  async getJobStats() {
+  async getJobStats(page = 1, limit = 20) {
+    const start = (page - 1) * limit;
+    const end = start + limit - 1;
     try {
-      const [active, waiting, failed, completed, delayed] = await Promise.all([
-        this.docQueue.getJobs(['active']),
-        this.docQueue.getJobs(['waiting']),
-        this.docQueue.getJobs(['failed']),
-        this.docQueue.getJobs(['completed']),
-        this.docQueue.getJobs(['delayed']),
-      ]);
+      const counts = await this.docQueue.getJobCounts(...JOB_STATES);
+      const [active, waiting, failed, completed, delayed] = await Promise.all(
+        JOB_STATES.map((state) => this.docQueue.getJobs([state], start, end)),
+      );
 
       const mapJob = (j: import('bullmq').Job) => {
         const job = j as import('bullmq').Job & { failedReason?: string };
@@ -218,19 +308,21 @@ export class AdminService {
 
       return {
         counts: {
-          active: active.length,
-          waiting: waiting.length,
-          failed: failed.length,
-          completed: completed.length,
-          delayed: delayed.length,
+          active: counts.active ?? 0,
+          waiting: counts.waiting ?? 0,
+          failed: counts.failed ?? 0,
+          completed: counts.completed ?? 0,
+          delayed: counts.delayed ?? 0,
         },
         jobs: {
           active: active.map(mapJob),
           waiting: waiting.map(mapJob),
-          failed: failed.map(mapJob).slice(0, 20),
-          completed: completed.map(mapJob).slice(0, 20),
+          failed: failed.map(mapJob),
+          completed: completed.map(mapJob),
           delayed: delayed.map(mapJob),
         },
+        page,
+        limit,
       };
     } catch {
       return {
@@ -242,6 +334,8 @@ export class AdminService {
           completed: [],
           delayed: [],
         },
+        page,
+        limit,
         error: 'Queue unavailable',
       };
     }
