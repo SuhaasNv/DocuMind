@@ -522,3 +522,5 @@ main().catch((err: unknown) => {
   console.error('[FATAL]', err instanceof Error ? err.message : err);
   process.exit(1);
 });
+
+export {};
