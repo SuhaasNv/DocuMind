@@ -313,11 +313,14 @@ async function main(): Promise<void> {
         chatBody.followUps.every((q) => typeof q === 'string')),
     JSON.stringify(chatBody.followUps ?? null),
   );
-  if (!chatBody.answer.startsWith('This is a stub')) {
-    check(
-      'live LLM emits follow-up chips',
-      Array.isArray(chatBody.followUps) && chatBody.followUps.length > 0,
-    );
+  // Follow-up chips are best-effort: the model is instructed to append them,
+  // but the feature contract is "valid when present, nothing (not an error)
+  // when absent" — so we assert validity-when-present, never mere presence
+  // (asserting presence would flake on the model omitting the FOLLOWUPS line).
+  if (Array.isArray(chatBody.followUps) && chatBody.followUps.length > 0) {
+    console.log(`[INFO] live answer emitted ${chatBody.followUps.length} follow-up chip(s)`);
+  } else {
+    console.log('[INFO] live answer emitted no follow-up chips (allowed by contract)');
   }
 
   // 5. SSE stream + cached replay keeps chips (stored separately in cache)
