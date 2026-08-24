@@ -4,6 +4,15 @@ server {
     root /usr/share/nginx/html;
     index index.html;
 
+    # nginx's bundled mime.types doesn't include .mjs, so it falls back to
+    # application/octet-stream. Browsers refuse to run a module Worker (the
+    # PDF.js worker) whose script has a non-JS MIME type, so every citation's
+    # PDF viewer fails with "Could not render the PDF." Force the right type.
+    location ~* \.mjs$ {
+        default_type application/javascript;
+        try_files $uri =404;
+    }
+
     location / {
         try_files $uri $uri/ /index.html;
     }
