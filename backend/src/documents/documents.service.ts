@@ -212,24 +212,44 @@ export class DocumentsService {
       throw new BadRequestException('Document has no file path; cannot retry.');
     }
 
-    await this.documentChunkService.deleteByDocumentId(id);
-    const updated = await this.prisma.document.update({
-      where: { id },
+    // Atomic claim: only the request that flips FAILED→PENDING proceeds, so a
+    // double-click or a retry racing an admin reprocess cannot enqueue twice
+    // (the worker doesn't re-check status, and duplicate jobs would duplicate
+    // chunks). The findUnique checks above still give precise errors for the
+    // common single-request case.
+    const claimed = await this.prisma.document.updateMany({
+      where: { id, status: DocumentStatus.FAILED },
       data: {
         status: DocumentStatus.PENDING,
         progress: 0,
         stage: null,
         failureReason: null,
         chunkCount: null,
+        pageCount: null,
       },
     });
+    if (claimed.count === 0) {
+      throw new BadRequestException(
+        `Document cannot be retried. Current status: ${document.status}. Only FAILED documents can be retried.`,
+      );
+    }
+
+    await this.documentChunkService.deleteByDocumentId(id);
     await this.documentQueue.add(
       'process',
       { documentId: id, userId },
       { attempts: 3, backoff: { type: 'exponential', delay: 2000 } },
     );
     this.logger.log(`Document ${id} re-queued for processing (retry).`);
-    return this.toResponse(updated);
+    return this.toResponse({
+      ...document,
+      status: DocumentStatus.PENDING,
+      progress: 0,
+      stage: null,
+      failureReason: null,
+      chunkCount: null,
+      pageCount: null,
+    });
   }
 
   /**

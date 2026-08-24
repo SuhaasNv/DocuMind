@@ -61,6 +61,7 @@ const DocumentCard = ({ document }: DocumentCardProps) => {
   const status = statusConfig[document.status];
   const StatusIcon = status.icon;
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [isRetrying, setIsRetrying] = useState(false);
 
   const handleDeleteClick = (e: React.MouseEvent) => {
     e.preventDefault();
@@ -188,23 +189,25 @@ const DocumentCard = ({ document }: DocumentCardProps) => {
               </Link>
             )}
             {document.status === 'FAILED' && (
-              <Button 
-                variant="outline" 
+              <Button
+                variant="outline"
                 size="sm"
+                disabled={isRetrying}
                 onClick={async () => {
-                  if (!accessToken) return;
+                  if (!accessToken || isRetrying) return;
+                  setIsRetrying(true);
                   try {
                     // Optimistic update
                     useAppStore.getState().updateDocument(document.id, {
                       status: 'PENDING',
                       progress: 0,
                     });
-                    
+
                     const res = await fetch(`${getApiBaseUrl()}/documents/${document.id}/retry`, {
                       method: 'POST',
                       headers: { Authorization: `Bearer ${accessToken}` },
                     });
-                    
+
                     if (!res.ok) {
                       // Revert on failure
                       useAppStore.getState().updateDocument(document.id, {
@@ -219,10 +222,15 @@ const DocumentCard = ({ document }: DocumentCardProps) => {
                       invalidateDocuments();
                     }
                   } catch {
-                    // Revert on failure
+                    // Revert on failure (e.g. network error) with feedback.
                     useAppStore.getState().updateDocument(document.id, {
                       status: 'FAILED',
                     });
+                    toast.error("Couldn't restart processing", {
+                      description: ERROR_MESSAGES.genericRetry,
+                    });
+                  } finally {
+                    setIsRetrying(false);
                   }
                 }}
               >
