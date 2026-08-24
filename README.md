@@ -210,41 +210,61 @@ Frontend runs at **http://localhost:8080**.
 
 ## Architecture
 
-```
-┌─────────────────────────────────────────────────────────────────────────────┐
-│                         Frontend (Vite + React)                              │
-│  ┌──────────┐  ┌─────────────┐  ┌─────────────┐  ┌──────────────────────┐  │
-│  │ Auth     │  │ Documents   │  │ Chat (SSE)   │  │ Settings / Prefs     │  │
-│  │ JWT      │  │ Upload/List │  │ Streaming    │  │ Zustand persist      │  │
-│  └────┬─────┘  └──────┬──────┘  └──────┬──────┘  └──────────────────────┘  │
-└───────┼───────────────┼────────────────┼────────────────────────────────────┘
-        │               │                │
-        ▼               ▼                ▼
-┌─────────────────────────────────────────────────────────────────────────────┐
-│                         Backend (NestJS)                                     │
-│  ┌──────────┐  ┌─────────────┐  ┌─────────────────────────────────────────┐ │
-│  │ Auth     │  │ Documents   │  │ RAG: Cache → Retrieve → Prompt → LLM      │ │
-│  │ JWT      │  │ Upload CRUD │  │ (streaming: SSE delta + done events)     │ │
-│  └──────────┘  └──────┬──────┘  └─────────────────────────────────────────┘ │
-│                       │                                                      │
-│                       ▼                                                      │
-│  ┌─────────────────────────────────────────────────────────────────────────┐ │
-│  │ Jobs (BullMQ): PDF → text → chunk → embed → DocumentChunk (pgvector)    │ │
-│  └─────────────────────────────────────────────────────────────────────────┘ │
-└───────┬──────────────────────────────┬──────────────────────────────────────┘
-        │                              │
-        ▼                              ▼
-┌─────────────────┐            ┌─────────────────┐
-│ PostgreSQL      │            │ Redis           │
-│ + pgvector      │            │ (BullMQ + cache)│
-└─────────────────┘            └─────────────────┘
+```mermaid
+flowchart TB
+    subgraph clients["Clients"]
+        browser["Browser SPA<br/>React 18 · Vite · Zustand · React Query"]
+        claude["Claude<br/>(claude.ai · Code · Desktop)"]
+    end
+
+    subgraph railway["Railway"]
+        web["documind-web<br/>nginx static container"]
+
+        subgraph api["documind-api · NestJS 11"]
+            guard["JWT guard (deny-by-default)<br/>+ @Public opt-outs · Throttler"]
+            auth["Auth · Users · Admin<br/>(audit log, analytics)"]
+            docs["Documents · Collections<br/>Conversations · Insights · Share"]
+            mcp["MCP endpoint /mcp<br/>API-token guard · 3 read tools"]
+            subgraph rag["RAG pipeline"]
+                cache_chk["1 · Chat cache check<br/>exact + semantic"]
+                retrieve["2 · Hybrid retrieval<br/>pgvector cosine + tsvector, RRF"]
+                prompt["3 · Prompt build<br/>system + history + context"]
+                llm["4 · LLM stream (SSE)<br/>+ inline citations"]
+                cache_chk --> retrieve --> prompt --> llm
+            end
+            worker["Ingestion worker (BullMQ)<br/>parse → chunk → embed → index<br/>+ summary · orphan sweep"]
+        end
+
+        pg[("PostgreSQL 16<br/>pgvector HNSW + tsvector GIN")]
+        redis[("Redis<br/>BullMQ queue + 2-layer cache")]
+    end
+
+    openai["OpenAI<br/>chat + embeddings<br/>(gemini · ollama · stub selectable)"]
+
+    browser -->|"HTTPS / SSE"| web
+    web -->|"VITE_API_URL"| guard
+    claude -->|"Bearer dm_… token"| mcp
+    guard --> auth & docs
+    docs --> rag
+    mcp --> retrieve
+    docs -->|"upload enqueues job"| redis
+    redis --> worker
+    worker --> pg
+    retrieve --> pg
+    cache_chk <--> redis
+    worker --> openai
+    retrieve --> openai
+    llm --> openai
+    auth --> pg
+    docs --> pg
 ```
 
 ### Data flow
 
-1. **Upload** — `POST /documents/upload` → create Document (PENDING) → enqueue job
-2. **Process** — Worker: PDF → text → token-aware chunks → batched embeddings → bulk insert into `document_chunks` (pgvector) → status DONE
-3. **Chat** — `POST /documents/:id/chat/stream` → cache check (exact, then semantic) → on miss: hybrid retrieval (pgvector + full-text, RRF-fused) → role-separated prompt with conversation history → stream LLM tokens via SSE → cache the answer
+1. **Upload** — `POST /documents/upload` → create Document (PENDING) → enqueue BullMQ job → the worker parses the PDF, splits it into token-aware page-aware chunks, batch-embeds them, and bulk-inserts into `document_chunks` (pgvector), then generates a summary + suggested questions → status DONE.
+2. **Chat** — `POST /documents/:id/chat/stream` → chat-cache check (exact, then semantic) → on miss: hybrid retrieval (pgvector cosine + Postgres full-text, RRF-fused) → role-separated prompt with conversation history → stream LLM tokens over SSE with inline `[n]` citations → persist the turn and cache the answer.
+3. **Collections / Garden / Share** — cross-document chat fans retrieval across a collection's members; any answer can be pinned to the searchable garden or published as a frozen public snapshot at `/s/:token`.
+4. **MCP** — Claude connects to `/mcp` with a personal `dm_…` token and calls `list_documents` / `search_documents` / `ask_document`, scoped to that user's own documents.
 
 ---
 
