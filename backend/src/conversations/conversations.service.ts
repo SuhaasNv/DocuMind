@@ -11,6 +11,7 @@ import type {
   Prisma,
 } from '../../generated/prisma/client.js';
 import { PrismaService } from '../prisma/prisma.service.js';
+import { MeService } from '../me/me.service.js';
 import type { ChatSourceDto } from '../documents/dto/chat-response.dto.js';
 import type {
   ConversationDetailDto,
@@ -31,7 +32,10 @@ const TITLE_MAX = 80;
 export class ConversationsService {
   private readonly logger = new Logger(ConversationsService.name);
 
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly meService: MeService,
+  ) {}
 
   /** Ownership gate shared by every conversation accessor: 404 then 403. */
   private async getOwned(id: string, userId: string): Promise<Conversation> {
@@ -110,6 +114,7 @@ export class ConversationsService {
     await this.getOwned(id, userId);
     // Messages cascade via the FK.
     await this.prisma.conversation.delete({ where: { id } });
+    this.meService.invalidateStats(userId);
   }
 
   /**
@@ -139,6 +144,7 @@ export class ConversationsService {
         role: 'user',
         content: question,
       });
+      this.meService.invalidateStats(userId);
       return conversationId;
     }
 
@@ -153,6 +159,7 @@ export class ConversationsService {
       },
       select: { id: true },
     });
+    this.meService.invalidateStats(userId);
     return created.id;
   }
 

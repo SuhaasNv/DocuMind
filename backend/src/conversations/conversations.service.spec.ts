@@ -5,6 +5,7 @@ import {
 } from '@nestjs/common';
 import { ConversationsService } from './conversations.service';
 import type { PrismaService } from '../prisma/prisma.service';
+import type { MeService } from '../me/me.service';
 
 const OWNER = 'user-a';
 const INTRUDER = 'user-b';
@@ -51,7 +52,11 @@ describe('ConversationsService ownership guard', () => {
 
   beforeEach(() => {
     prisma = makePrisma();
-    service = new ConversationsService(prisma as unknown as PrismaService);
+    const meService = { invalidateStats: jest.fn() } as unknown as MeService;
+    service = new ConversationsService(
+      prisma as unknown as PrismaService,
+      meService,
+    );
   });
 
   it('404s for a missing conversation', async () => {

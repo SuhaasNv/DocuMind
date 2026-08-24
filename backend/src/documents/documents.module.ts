@@ -7,9 +7,10 @@ import { RagModule } from '../rag/rag.module.js';
 import { JobsModule } from '../jobs/jobs.module.js';
 import { ChunksModule } from '../chunks/chunks.module.js';
 import { ConversationsModule } from '../conversations/conversations.module.js';
+import { MeModule } from '../me/me.module.js';
 
 @Module({
-  imports: [RagModule, JobsModule, ChunksModule, ConversationsModule],
+  imports: [RagModule, JobsModule, ChunksModule, ConversationsModule, MeModule],
   controllers: [DocumentsController],
   providers: [DocumentsService, RetrievalService, RagOrchestratorService],
   exports: [DocumentsService, RetrievalService, RagOrchestratorService],

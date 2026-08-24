@@ -1,5 +1,5 @@
 import { useRef, useEffect, useCallback, useState } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
+import { useParams, useNavigate, useLocation } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { ArrowLeft, FileText, Folder, Plus } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -22,12 +22,20 @@ import { useConversationHydration } from '@/hooks/useConversationHydration';
 
 const SCROLL_THRESHOLD_PX = 120;
 
+/** Router state passed from the dashboard hub / suggested-question chips. */
+interface ChatLocationState {
+  conversationId?: string;
+  presetQuestion?: string;
+}
+
 const ChatPage = () => {
   const { documentId, collectionId } = useParams<{
     documentId: string;
     collectionId: string;
   }>();
   const navigate = useNavigate();
+  const location = useLocation();
+  const locationState = (location.state ?? null) as ChatLocationState | null;
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   const [viewerSource, setViewerSource] = useState<ChatSource | null>(null);
@@ -92,7 +100,8 @@ const ChatPage = () => {
     : document?.name ?? '';
 
   // Load persisted messages from the server when this chat has none locally.
-  useConversationHydration(chatKey);
+  // A conversationId in router state resumes that exact conversation.
+  useConversationHydration(chatKey, locationState?.conversationId);
 
   const scrollToBottom = useCallback((behavior: ScrollBehavior = 'smooth') => {
     const container = scrollContainerRef.current;
@@ -128,6 +137,18 @@ const ChatPage = () => {
     },
     [chatKey]
   );
+
+  // Preset question from a suggested-question chip: submit once on mount
+  // when the conversation is empty.
+  const presetSubmittedRef = useRef(false);
+  useEffect(() => {
+    const preset = locationState?.presetQuestion;
+    if (!preset || presetSubmittedRef.current || !chatKey) return;
+    presetSubmittedRef.current = true;
+    const existing = useAppStore.getState().conversations[chatKey]?.messages ?? [];
+    if (existing.length > 0) return;
+    handleSendMessage(preset);
+  }, [locationState?.presetQuestion, chatKey, handleSendMessage]);
 
   const handleNewChat = useCallback(() => {
     if (chatKey) {

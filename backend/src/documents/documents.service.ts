@@ -19,6 +19,7 @@ import type {
 } from './dto/document-response.dto.js';
 import { ChatCacheService } from '../rag/chat-cache.service.js';
 import { DocumentSummaryService } from '../rag/document-summary.service.js';
+import { MeService } from '../me/me.service.js';
 
 const PDF_MIME = 'application/pdf';
 const MAX_FILE_SIZE_BYTES = 50 * 1024 * 1024; // 50MB
@@ -35,6 +36,7 @@ export class DocumentsService {
     @InjectQueue(QUEUE_NAME) private readonly documentQueue: Queue,
     private readonly chatCache: ChatCacheService,
     private readonly summaryService: DocumentSummaryService,
+    private readonly meService: MeService,
   ) {}
 
   async createFromUpload(
@@ -79,6 +81,7 @@ export class DocumentsService {
     this.logger.log(
       `Document ${document.id} queued for processing. Ensure Redis is running; watch for "processed successfully" or "processing failed" in logs.`,
     );
+    this.meService.invalidateStats(userId);
 
     return this.toResponse(documentWithPath);
   }
@@ -161,6 +164,7 @@ export class DocumentsService {
     // Collection caches keyed on this doc's membership hash change scope on
     // delete (member list shrinks), so they miss naturally; TTL reclaims them.
     void this.chatCache.invalidateScope(id);
+    this.meService.invalidateStats(userId);
 
     if (document.filePath) {
       try {

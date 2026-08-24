@@ -56,12 +56,39 @@ export const EmptyState = ({
     );
 };
 
+const HOW_IT_WORKS_STEPS = [
+    { step: '1', label: 'Extract', hint: 'We read your PDF' },
+    { step: '2', label: 'Understand', hint: 'Pages become searchable' },
+    { step: '3', label: 'Chat', hint: 'Ask anything about it' },
+] as const;
+
 export const EmptyDocuments = () => (
-    <EmptyState
-        icon={FileText}
-        title="No documents yet"
-        description="Upload your first PDF to get started. We'll utilize RAG to help you chat with it in seconds."
-    />
+    <div>
+        <EmptyState
+            icon={FileText}
+            title="No documents yet"
+            description="Upload your first PDF to get started. We'll utilize RAG to help you chat with it in seconds."
+        />
+        {/* Plain 3-step hint: extract → understand → chat */}
+        <div className="flex flex-wrap items-start justify-center gap-x-6 gap-y-3 pb-8 -mt-8">
+            {HOW_IT_WORKS_STEPS.map(({ step, label, hint }, i) => (
+                <div key={step} className="flex items-center gap-3">
+                    <div className="text-center">
+                        <div className="w-7 h-7 mx-auto mb-1 rounded-full bg-primary/10 text-primary text-xs font-semibold flex items-center justify-center">
+                            {step}
+                        </div>
+                        <p className="text-sm font-medium">{label}</p>
+                        <p className="text-xs text-muted-foreground">{hint}</p>
+                    </div>
+                    {i < HOW_IT_WORKS_STEPS.length - 1 && (
+                        <span className="text-muted-foreground/50 hidden sm:inline" aria-hidden="true">
+                            →
+                        </span>
+                    )}
+                </div>
+            ))}
+        </div>
+    </div>
 );
 
 export const EmptySearch = () => (

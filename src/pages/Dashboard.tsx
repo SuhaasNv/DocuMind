@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { AnimatePresence } from 'framer-motion';
 import { AlertCircle, LayoutGrid, List, RefreshCw } from 'lucide-react';
 import Header from '@/components/app/Header';
+import DashboardHub from '@/components/app/DashboardHub';
 import UploadArea from '@/components/app/UploadArea';
 import DocumentCard from '@/components/app/DocumentCard';
 import { EmptyDocuments, EmptySearch } from '@/components/app/EmptyStates';
@@ -102,6 +103,9 @@ const Dashboard = () => {
       <Header title="Documents" />
       <main className="flex-1 min-h-0 overflow-y-auto overflow-x-hidden">
         <div className="container mx-auto max-w-6xl px-4 sm:px-6 lg:px-8 py-6 sm:py-8">
+          {/* Home hub: stats + continue-where-you-left-off */}
+          <DashboardHub />
+
           {/* Upload area */}
           <UploadArea />
 

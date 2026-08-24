@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { motion } from 'framer-motion';
 import { FileText, MessageSquare, Trash2, Clock, AlertTriangle, CheckCircle, Loader2 } from 'lucide-react';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 import {
@@ -53,6 +53,7 @@ const statusConfig: Record<DocumentStatus, {
 };
 
 const DocumentCard = ({ document }: DocumentCardProps) => {
+  const navigate = useNavigate();
   const removeDocument = useAppStore((state) => state.removeDocument);
   const accessToken = useAppStore((state) => state.accessToken);
   const invalidateDocuments = useInvalidateDocuments();
@@ -150,6 +151,25 @@ const DocumentCard = ({ document }: DocumentCardProps) => {
               <p className="text-xs text-muted-foreground mt-1.5">
                 {stageLabel(document.stage, document.status)}
               </p>
+            </div>
+          )}
+
+          {/* Suggested questions (Phase 8 populates) — jump into chat pre-submitted */}
+          {document.status === 'DONE' && document.suggestedQuestions && document.suggestedQuestions.length > 0 && (
+            <div className="flex gap-2 overflow-x-auto scrollbar-none mb-3 -mx-1 px-1">
+              {document.suggestedQuestions.slice(0, 3).map((question) => (
+                <button
+                  key={question}
+                  onClick={() =>
+                    navigate(`/chat/${document.id}`, {
+                      state: { presetQuestion: question },
+                    })
+                  }
+                  className="shrink-0 max-w-[240px] truncate px-3 py-1.5 rounded-full bg-secondary/50 hover:bg-secondary border border-border/50 hover:border-border text-xs text-muted-foreground hover:text-foreground transition-all duration-200 whitespace-nowrap focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                >
+                  {question}
+                </button>
+              ))}
             </div>
           )}
 
