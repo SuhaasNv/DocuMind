@@ -12,8 +12,9 @@ answers with sources.
 
 | Layer | Tech |
 |---|---|
-| Frontend | React 18 + Vite + TypeScript, Zustand, Tailwind + shadcn/ui, framer-motion |
+| Frontend | React 18 + Vite + TypeScript, Zustand, @tanstack/react-query, react-pdf, Tailwind + shadcn/ui, framer-motion |
 | Backend | NestJS 11 (CommonJS build, ESM-style `.js` import specifiers) |
+| MCP | `POST /mcp` Streamable HTTP via @modelcontextprotocol/sdk, API-token auth |
 | Database | PostgreSQL 16 + pgvector (HNSW), Prisma 7 with `@prisma/adapter-pg` |
 | Queue / cache | Redis — BullMQ 5 (ingestion) + two-layer chat cache |
 | LLM | OpenAI (default in prod, chat + embeddings); Gemini / Ollama / stub selectable |
@@ -27,7 +28,8 @@ POST /documents/upload (PDF, 50MB, throttled)
   → jobs/document.processor (concurrency 3, rate-limited)
       pdf-parse → lib/chunking.ts (token-aware recursive: paragraphs →
       sentences → hard token cuts; 400-token chunks, 60-token overlap,
-      cl100k_base via gpt-tokenizer)
+      cl100k_base via gpt-tokenizer; chunks carry page numbers for
+      inline-citation page jumps)
       → [optional CONTEXTUAL_RETRIEVAL=true: 1-sentence situating context
          per chunk, prepended before embedding]
       → embedding.service.embedBatch (64 chunks per OpenAI request; stub maps locally)
@@ -37,7 +39,11 @@ POST /documents/upload (PDF, 50MB, throttled)
 ```
 
 Empty/scan-only PDFs finish DONE with zero chunks. Failures delete partial
-chunks and mark FAILED (reason logged). Retry re-enqueues FAILED documents.
+chunks and mark FAILED with a specific user-facing reason
+(password-protected / scanned-image / corrupt) rather than one generic
+error. Retry re-enqueues FAILED documents. An orphan-file sweep reclaims
+`uploads/` files left behind by failed or deleted documents. Card progress
+reflects the real stage (EXTRACTING / CHUNKING / EMBEDDING / FINALIZING).
 
 ## Retrieval & chat
 
@@ -54,7 +60,12 @@ chunks and mark FAILED (reason logged). Retry re-enqueues FAILED documents.
   `completeMessages`/`streamMessages`; OpenAI gets real role messages.
 - `documents/rag-orchestrator.service.ts` — cache check → retrieve →
   prompt → stream. SSE events: `delta`, `error` (generic message; real
-  error logged), `done` (sources + `cached` flag).
+  error logged), `done` (sources + `cached` flag). Answers carry inline
+  `[n]` citation markers mapped to sources; the `done` payload also feeds
+  the per-answer transparency panel (candidate scores, cache status
+  exact/semantic/miss, stage timings) backed by always-on chat telemetry.
+- `GET /documents/:id/file` — streams the original PDF (ownership
+  enforced) so a clicked citation opens react-pdf at the cited page.
 - `rag/chat-cache.service.ts` — Redis, two layers: exact
   (sha256(normalized question) per document + topK + history digest) and
   semantic (query-embedding cosine ≥ threshold vs cached entries). Query
@@ -66,7 +77,37 @@ chunks and mark FAILED (reason logged). Retry re-enqueues FAILED documents.
 - JWT (Passport), deny-by-default via global guard + `@Public()` opt-outs.
 - `POST /auth/register|login` (throttled 10/min), `/auth/ping`
   (lastActiveAt), `/auth/change-password` (bcrypt-verified).
-- `/admin/*` behind `@Roles(ADMIN)`: users, documents, jobs, metrics.
+- `/admin/*` behind `@Roles(ADMIN)`: user/document search, job retry/clean,
+  document delete/reprocess, real analytics (cache-hit-rate, token cost),
+  complete user deletion (cascade). Destructive actions write an
+  `AdminAuditLog` entry; last-admin protection blocks removing the final
+  admin. See `admin/`.
+
+## Modules
+
+Beyond `auth`, `documents`, `chunks`, `embedding`, `rag`, `jobs`, `health`:
+
+- `collections/` — group documents into a `Collection`; cross-document
+  chat fans retrieval across `CollectionDocument` members and fuses.
+- `conversations/` — server-side conversation + message persistence.
+- `insights/` — knowledge garden: pin an answer as an `Insight`, search
+  the library, export as markdown.
+- `share/` — publish an answer as a frozen `SharedAnswer` snapshot at
+  `/s/:token` (public, no auth); revoke/expire supported.
+- `me/` — home hub: `GET /me/stats` and continue-where-you-left-off.
+- `chat/` — always-on chat telemetry feeding the transparency panel.
+- `api-tokens/` — personal API tokens (`dm_...`, shown once); `ApiToken`
+  rows verified by `ApiTokenGuard`.
+- `mcp/` — `POST /mcp` Streamable HTTP endpoint (`@Public()` +
+  `ApiTokenGuard`, `@modelcontextprotocol/sdk`). Three read-only tools:
+  `list_documents`, `search_documents`, `ask_document`.
+
+## Data model (Prisma)
+
+`User`, `Document`, `DocumentChunk` (pgvector + `content_tsv`),
+`Conversation`, `ConversationMessage`, `Collection`, `CollectionDocument`
+(join), `Insight` (garden), `SharedAnswer` (public snapshot),
+`AdminAuditLog`, `ApiToken`.
 
 ## Frontend structure
 
@@ -75,11 +116,17 @@ chunks and mark FAILED (reason logged). Retry re-enqueues FAILED documents.
   timeout; partial answers preserved on mid-stream errors;
   `stopAllChatStreams()` on logout.
 - `src/lib/sseChat.ts` — fetch-based SSE parser (delta/done/error).
-- `src/stores/useAppStore.ts` — auth (persisted), documents,
+- `@tanstack/react-query` is the data layer for dashboard/document/stats
+  fetching; `src/stores/useAppStore.ts` — auth (persisted), documents,
   conversations, notifications. `src/stores/usePreferencesStore.ts` —
   auto-scroll, sources, animations, typewriter toggles (all wired).
-- Routes: marketing pages under `PublicLayout`; `/app` (Documents),
-  `/app/settings`, `/app/admin`, `/chat/:documentId` behind auth.
+- Answers render inline `[n]` citations; clicking one opens the react-pdf
+  viewer at the cited page. User-facing error strings are centralized with
+  401 session handling; accessibility labels across interactive elements.
+- Routes: marketing pages under `PublicLayout`; `/s/:token` public (share
+  snapshot); behind auth: `/app` (Documents), `/app/settings`,
+  `/app/admin`, `/chat/:documentId`, `/collection/:collectionId/chat`
+  (cross-document), `/garden` (knowledge garden).
 
 ## Environment variables (backend)
 

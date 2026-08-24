@@ -69,12 +69,19 @@
 | **Fast Ingestion** | BullMQ workers with batched embeddings and bulk inserts (~7× faster than the naive loop). Token-aware recursive chunking (paragraphs → sentences → token cuts) with overlap. Live progress. |
 | **Hybrid Retrieval** | pgvector cosine search (HNSW index) fused with Postgres full-text search (tsvector + GIN) via Reciprocal Rank Fusion. Sources show real similarity scores. |
 | **Grounded RAG Chat** | Per-document chat with strict grounding rules and role-separated prompts. Conversation memory: follow-ups like "tell me more about it" resolve against prior turns. |
+| **Inline Citations + PDF Viewer** | Answers render inline `[n]` markers; clicking one opens the original PDF (react-pdf) scrolled to the cited page. Chunks are page-aware; `GET /documents/:id/file` streams the source. |
 | **Streaming Responses** | SSE streaming with batched UI updates. Answers keep generating in the background if you navigate away — like ChatGPT/Claude. Mid-stream provider errors are surfaced, never silently truncated. |
 | **Answer Cache** | Two-layer Redis cache (exact + semantic-similarity). Repeat questions answer in ~300ms, replayed over the same streaming protocol. Invalidated on re-processing and deletion. |
+| **Instant Activation** | Ready documents offer a generated summary, suggested-question chips, and follow-up chips after each answer — no blank page. |
+| **Collections & Cross-Document Chat** | Group documents into collections and chat across all of them at once; retrieval fans out and fuses results from multiple PDFs. |
+| **Knowledge Garden** | Pin answers into a personal, searchable library and export it as markdown. |
+| **Shareable Answers** | Publish an answer to a public link (`/s/:token`) as a frozen snapshot — question, answer, and sources — with revoke and expiry controls. |
+| **Retrieval Transparency** | Per-answer debug panel: candidate chunk scores, cache status (exact/semantic/miss), and stage timings, backed by always-on chat telemetry. |
 | **Source Attribution** | Toggleable "show sources": each answer cites the chunks it was grounded in, with similarity scores and snippets. |
 | **User Auth** | Register, login, change password, JWT sessions. Rate-limited auth endpoints; ownership enforced on every document route. |
-| **Settings & Preferences** | Auto-scroll, sources, animations, typewriter effect, clear chat history — all functional and persisted. |
-| **Admin Dashboard** | Users, documents, job queue introspection, and system metrics behind role-based access. |
+| **Settings & Preferences** | Auto-scroll, sources, animations, typewriter effect, clear chat history, API tokens — all functional and persisted. |
+| **Admin Console** | User/document search, job retry/clean, document delete/reprocess, real analytics (cache-hit-rate, token cost), admin audit log, last-admin protection, and complete user deletion — behind role-based access. |
+| **MCP Connector** | Personal API tokens (`dm_...`) and a `POST /mcp` Streamable HTTP endpoint expose three read-only tools (`list_documents`, `search_documents`, `ask_document`) to Claude and any MCP client. |
 | **Modern Landing** | Spline 3D scene, spotlight effects, Framer Motion animations. Mobile-responsive throughout. |
 
 ---
@@ -92,7 +99,8 @@
 | Styling | [Tailwind CSS](https://tailwindcss.com/) 3, [shadcn/ui](https://ui.shadcn.com/) (Radix primitives) |
 | Animations | [Framer Motion](https://www.framer.com/motion/) |
 | 3D | [Spline](https://spline.design/) (React runtime) |
-| Data | Native `fetch`; SSE via `fetch` + `ReadableStream` for streaming chat |
+| Data | [TanStack Query](https://tanstack.com/query) (React Query) over native `fetch`; SSE via `fetch` + `ReadableStream` for streaming chat |
+| PDF | [react-pdf](https://github.com/wojtekmaj/react-pdf) (inline viewer, citation page jumps) |
 | Markdown | react-markdown (chat messages) |
 | Charts | Recharts |
 | Testing | Vitest, Testing Library |
@@ -113,6 +121,7 @@
 | LLM | **OpenAI** `gpt-4o-mini` (role-separated messages, streaming); Gemini, Ollama, or stub selectable |
 | Tokenization | gpt-tokenizer (cl100k_base) for chunking and history budgets |
 | Cache | Two-layer Redis chat cache (exact + semantic) |
+| MCP | [@modelcontextprotocol/sdk](https://github.com/modelcontextprotocol/typescript-sdk) — `POST /mcp` Streamable HTTP, API-token auth |
 
 ### Infrastructure
 
@@ -282,19 +291,28 @@ insight-garden/
 │   │   └── ui/               # shadcn, Spline, Spotlight, TubelightNav
 │   ├── hooks/                # useBackendHealth, useToast, useMobile, useReducedMotion
 │   ├── lib/                  # api.ts, sseChat.ts, chatStream.ts (background streams), utils
-│   ├── pages/                # Index, Login, Register, Dashboard, ChatPage, Settings, etc.
+│   ├── pages/                # Index, Login, Register, Dashboard, ChatPage, GardenPage, SharePage, Settings, AdminDashboard, etc.
 │   └── stores/               # useAppStore, usePreferencesStore
 ├── backend/
 │   ├── prisma/
-│   │   ├── schema.prisma     # User, Document, DocumentChunk (pgvector)
+│   │   ├── schema.prisma     # User, Document, DocumentChunk, Collection, Insight, SharedAnswer, Conversation, AdminAuditLog, ApiToken
 │   │   └── migrations/
 │   └── src/
 │       ├── auth/             # Register, login, JWT strategy/guard
-│       ├── documents/        # Controller, service, retrieval, RAG orchestrator
+│       ├── documents/        # Controller, service, retrieval, RAG orchestrator, file streaming
+│       ├── collections/      # Collections + cross-document chat
+│       ├── conversations/    # Server-side conversation persistence
+│       ├── insights/         # Knowledge garden (pinned answers, export)
+│       ├── share/            # Public answer snapshots (/s/:token)
+│       ├── me/               # Home hub stats (/me/stats)
+│       ├── chat/             # Chat telemetry
 │       ├── chunks/            # DocumentChunkService (pgvector)
 │       ├── embedding/        # Embedding service
 │       ├── rag/              # Prompt, LLM service, chat cache, Gemini client
 │       ├── jobs/              # BullMQ document processor
+│       ├── admin/            # Admin console + audit log
+│       ├── api-tokens/       # Personal API tokens (dm_...)
+│       ├── mcp/              # MCP Streamable HTTP endpoint (POST /mcp)
 │       ├── health/            # GET /health
 │       └── ../scripts/smoke.ts # Cumulative end-to-end smoke suite
 ├── docker-compose.yml        # Postgres (pgvector) + Redis
@@ -389,7 +407,7 @@ DocuMind exposes an MCP (Model Context Protocol) server at `POST /mcp`, authenti
 
 | Document | Description |
 |----------|-------------|
-| [PHASES.md](PHASES.md) | The six-phase upgrade roadmap with measured before/after numbers |
+| [PHASES.md](PHASES.md) | The phased upgrade roadmap (Phases 1–15 + hardening) with measured before/after numbers |
 | [CODEBASE_DOCUMENTATION.md](CODEBASE_DOCUMENTATION.md) | Architecture reference generated from the current code |
 | [docs/CASE-STUDY-DEPLOYMENT.md](docs/CASE-STUDY-DEPLOYMENT.md) | Historical deployment case study (pre-Railway migration) |
 | [docs/LOCAL-DEV-SANITY-CHECKLIST.md](docs/LOCAL-DEV-SANITY-CHECKLIST.md) | Step-by-step local dev verification |
