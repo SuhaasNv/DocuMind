@@ -42,6 +42,8 @@ import { RetrievalQueryDto } from './dto/retrieval-query.dto.js';
 import { ChatRequestDto } from './dto/chat-request.dto.js';
 import type { ChatSourceDto } from './dto/chat-response.dto.js';
 import { ConversationsService } from '../conversations/conversations.service.js';
+import { DownloadFileQueryDto } from './dto/download-file-query.dto.js';
+import { buildContentDisposition } from '../lib/content-disposition.js';
 
 const PDF_MIME = 'application/pdf';
 const MAX_SIZE = 50 * 1024 * 1024; // 50MB
@@ -124,22 +126,28 @@ export class DocumentsController {
    * Serve the original PDF for the citation viewer. Ownership-checked;
    * supports HTTP Range requests (pdf.js issues them). 404 when the file is
    * gone (ephemeral-disk redeploy) without leaking filesystem paths.
+   *
+   * `?download=1` additionally sets Content-Disposition: attachment so the
+   * browser saves the file instead of rendering it inline — everything else
+   * (Range support, headers, ownership check) is unchanged either way.
    */
   @Get(':id/file')
   async getFile(
     @Param('id') id: string,
+    @Query() query: DownloadFileQueryDto,
     @CurrentUser() user: JwtPayload,
     @Req() req: Request,
     @Res({ passthrough: false }) res: Response,
   ): Promise<void> {
-    const { absolutePath } = await this.documentsService.getFileForDownload(
-      id,
-      user.sub,
-    );
+    const { absolutePath, name } =
+      await this.documentsService.getFileForDownload(id, user.sub);
     const { size } = await stat(absolutePath);
     res.setHeader('Content-Type', 'application/pdf');
     res.setHeader('Accept-Ranges', 'bytes');
     res.setHeader('Cache-Control', 'private, no-store');
+    if (query.download === '1') {
+      res.setHeader('Content-Disposition', buildContentDisposition(name));
+    }
 
     const range = req.headers.range;
     if (range) {

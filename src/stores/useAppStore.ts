@@ -17,6 +17,9 @@ pageCount?: number;
   stage?: string;
   /** Safe user-facing reason when status is FAILED. */
   failureReason?: string;
+  /** True when the original PDF still has a stored filePath (DB row only —
+   * does not prove the file exists on disk after an ephemeral-disk wipe). */
+  hasFile?: boolean;
   /** ~3-sentence LLM summary; null until generated (instant activation). */
   summary?: string | null;
   /** Suggested questions the document can answer; null until generated. */

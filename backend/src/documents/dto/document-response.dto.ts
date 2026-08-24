@@ -17,6 +17,10 @@ export interface DocumentResponseDto {
   stage?: string;
   /** Safe, user-facing reason when status is FAILED. */
   failureReason?: string;
+  /** True when the original PDF still has a filePath row (never the raw path
+   * itself). Does NOT prove the file exists on disk — an ephemeral-disk
+   * redeploy can still 404 on download; that's a UI-level error case. */
+  hasFile: boolean;
   /** ~3-sentence LLM summary; null until generated (instant activation). */
   summary: string | null;
   /** Suggested questions the document can answer; null until generated. */

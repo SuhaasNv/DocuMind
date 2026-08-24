@@ -14,6 +14,7 @@ import PrivacyPage from "./pages/PrivacyPage";
 import TermsPage from "./pages/TermsPage";
 import ContactPage from "./pages/ContactPage";
 import Dashboard from "./pages/Dashboard";
+import DataPage from "./pages/DataPage";
 import ChatPage from "./pages/ChatPage";
 import GardenPage from "./pages/GardenPage";
 import SettingsPage from "./pages/SettingsPage";
@@ -60,6 +61,7 @@ const App = () => (
           {/* App routes (protected; sidebar layout) */}
           <Route path="/app" element={<ProtectedRoute><AppLayout /></ProtectedRoute>}>
             <Route index element={<Dashboard />} />
+            <Route path="data" element={<DataPage />} />
             <Route path="settings" element={<SettingsPage />} />
             <Route path="admin" element={<AdminDashboard />} />
           </Route>

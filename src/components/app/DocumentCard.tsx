@@ -1,9 +1,14 @@
 import { useState } from 'react';
 import { motion } from 'framer-motion';
-import { FileText, MessageSquare, Trash2, Clock, AlertTriangle, CheckCircle, Loader2 } from 'lucide-react';
+import { FileText, MessageSquare, Trash2, Clock, AlertTriangle, CheckCircle, Loader2, Download } from 'lucide-react';
 import { Link, useNavigate } from 'react-router-dom';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from '@/components/ui/tooltip';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -17,6 +22,7 @@ import {
 import { Document, DocumentStatus, useAppStore } from '@/stores/useAppStore';
 import { getApiBaseUrl, getApiErrorMessage } from '@/lib/api';
 import { checkSessionExpired, ERROR_MESSAGES } from '@/lib/errorMessages';
+import { downloadDocument } from '@/lib/downloadDocument';
 import { useInvalidateDocuments } from '@/hooks/useDocumentsQuery';
 import { formatFileSize, stageLabel } from '@/lib/format';
 import { formatDistanceToNow } from 'date-fns';
@@ -62,6 +68,21 @@ const DocumentCard = ({ document }: DocumentCardProps) => {
   const StatusIcon = status.icon;
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [isRetrying, setIsRetrying] = useState(false);
+  const [isDownloading, setIsDownloading] = useState(false);
+
+  const handleDownload = async () => {
+    if (!accessToken || isDownloading) return;
+    setIsDownloading(true);
+    try {
+      await downloadDocument(accessToken, document.id, document.name);
+    } catch (err) {
+      toast.error("Couldn't download this document", {
+        description: getApiErrorMessage(err, ERROR_MESSAGES.genericRetry),
+      });
+    } finally {
+      setIsDownloading(false);
+    }
+  };
 
   const handleDeleteClick = (e: React.MouseEvent) => {
     e.preventDefault();
@@ -236,6 +257,27 @@ const DocumentCard = ({ document }: DocumentCardProps) => {
               >
                 Retry
               </Button>
+            )}
+            {document.hasFile !== false && (
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    disabled={isDownloading}
+                    onClick={handleDownload}
+                    aria-label={`Download ${document.name}`}
+                    className="text-muted-foreground hover:text-foreground opacity-0 group-hover:opacity-100 focus-visible:opacity-100 [@media(pointer:coarse)]:opacity-100 transition-opacity"
+                  >
+                    {isDownloading ? (
+                      <Loader2 className="w-4 h-4 animate-spin" />
+                    ) : (
+                      <Download className="w-4 h-4" />
+                    )}
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent>Download PDF</TooltipContent>
+              </Tooltip>
             )}
             <Button
               variant="ghost"

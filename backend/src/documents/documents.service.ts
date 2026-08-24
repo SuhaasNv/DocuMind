@@ -294,6 +294,7 @@ export class DocumentsService {
       chunkCount: doc.chunkCount ?? undefined,
       stage: doc.stage ?? undefined,
       failureReason: doc.failureReason ?? undefined,
+      hasFile: doc.filePath !== null,
       summary: doc.summary,
       suggestedQuestions: this.toQuestions(doc.suggestedQuestions),
     };

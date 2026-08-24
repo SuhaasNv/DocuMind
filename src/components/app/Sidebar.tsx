@@ -14,6 +14,7 @@ import {
   ShieldAlert,
   Sprout,
   Users,
+  Database,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
@@ -84,6 +85,7 @@ const Sidebar = () => {
   // Regular user nav (with admin panel link if admin)
   const userNavItems = [
     { icon: LayoutDashboard, label: 'Documents', path: '/app' },
+    { icon: Database, label: 'Data', path: '/app/data' },
     { icon: Sprout, label: 'Garden', path: '/garden' },
     { icon: Settings, label: 'Settings', path: '/app/settings' },
     ...(isAdmin ? [{ icon: ShieldAlert, label: 'Admin Panel', path: '/app/admin' }] : []),

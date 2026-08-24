@@ -111,11 +111,14 @@ describe('DocumentsService.retry', () => {
   }) {
     const findUnique = jest
       .fn()
-      .mockResolvedValue(overrides.doc === undefined ? failedDoc : overrides.doc);
+      .mockResolvedValue(
+        overrides.doc === undefined ? failedDoc : overrides.doc,
+      );
     const updateMany = jest
       .fn()
       .mockResolvedValue({ count: overrides.claimedCount ?? 1 });
-    const queueAdd = overrides.queueAdd ?? jest.fn().mockResolvedValue(undefined);
+    const queueAdd =
+      overrides.queueAdd ?? jest.fn().mockResolvedValue(undefined);
     const deleteByDocumentId = jest.fn().mockResolvedValue(undefined);
     const prisma = {
       document: { findUnique, updateMany },

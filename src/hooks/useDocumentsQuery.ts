@@ -16,6 +16,9 @@ export interface ApiDocument {
   chunkCount?: number;
   stage?: string;
   failureReason?: string;
+  /** True when the original PDF still has a stored filePath (DB row only —
+   * does not prove the file exists on disk after an ephemeral-disk wipe). */
+  hasFile?: boolean;
   summary?: string | null;
   suggestedQuestions?: string[] | null;
 }
@@ -46,6 +49,7 @@ export function toStoreDocument(d: ApiDocument): Document {
     chunkCount: d.chunkCount,
     stage: d.stage,
     failureReason: d.failureReason,
+    hasFile: d.hasFile,
     summary: d.summary ?? null,
     suggestedQuestions: d.suggestedQuestions ?? null,
   };

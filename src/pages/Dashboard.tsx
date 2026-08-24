@@ -21,17 +21,19 @@ import { useAppStore, type Document } from '@/stores/useAppStore';
 import { usePreferencesStore } from '@/stores/usePreferencesStore';
 import { useDocumentsQuery } from '@/hooks/useDocumentsQuery';
 
-type SortKey = 'newest' | 'name' | 'size';
-type StatusFilter = 'ALL' | 'DONE' | 'PROCESSING' | 'FAILED';
+// Exported so DataPage (dense table view) reuses the exact same status/sort
+// semantics instead of a second implementation.
+export type SortKey = 'newest' | 'name' | 'size';
+export type StatusFilter = 'ALL' | 'DONE' | 'PROCESSING' | 'FAILED';
 
-const STATUS_FILTERS: Array<{ key: StatusFilter; label: string }> = [
+export const STATUS_FILTERS: Array<{ key: StatusFilter; label: string }> = [
   { key: 'ALL', label: 'All' },
   { key: 'DONE', label: 'Ready' },
   { key: 'PROCESSING', label: 'Processing' },
   { key: 'FAILED', label: 'Failed' },
 ];
 
-function matchesStatus(doc: Document, filter: StatusFilter): boolean {
+export function matchesStatus(doc: Document, filter: StatusFilter): boolean {
   if (filter === 'ALL') return true;
   if (filter === 'PROCESSING') {
     return doc.status === 'PROCESSING' || doc.status === 'PENDING';
@@ -40,7 +42,7 @@ function matchesStatus(doc: Document, filter: StatusFilter): boolean {
 }
 
 /** Client-side sort over the loaded page(s). */
-function sortDocuments(docs: Document[], sort: SortKey): Document[] {
+export function sortDocuments(docs: Document[], sort: SortKey): Document[] {
   const sorted = [...docs];
   if (sort === 'name') {
     sorted.sort((a, b) => a.name.localeCompare(b.name));
