@@ -190,10 +190,38 @@ export async function getAllDocuments(
   return apiFetch(accessToken, `/admin/documents?${params}`);
 }
 
+export async function deleteDocument(accessToken: string, documentId: string) {
+  return apiFetch(accessToken, `/admin/documents/${documentId}`, { method: 'DELETE' });
+}
+
+export async function reprocessDocument(accessToken: string, documentId: string) {
+  return apiFetch(accessToken, `/admin/documents/${documentId}/reprocess`, { method: 'POST' });
+}
+
 // ── Job Queue ─────────────────────────────────────────────────────────────
 
 export async function getJobStats(accessToken: string): Promise<JobStats> {
   return apiFetch<JobStats>(accessToken, '/admin/jobs');
+}
+
+export async function retryJob(accessToken: string, jobId: string) {
+  return apiFetch(accessToken, `/admin/jobs/${jobId}/retry`, { method: 'POST' });
+}
+
+export async function removeJob(accessToken: string, jobId: string) {
+  return apiFetch(accessToken, `/admin/jobs/${jobId}`, { method: 'DELETE' });
+}
+
+export async function retryAllFailedJobs(
+  accessToken: string,
+): Promise<{ retried: number }> {
+  return apiFetch(accessToken, '/admin/jobs/retry-failed', { method: 'POST' });
+}
+
+export async function cleanCompletedJobs(
+  accessToken: string,
+): Promise<{ cleaned: number }> {
+  return apiFetch(accessToken, '/admin/jobs/clean', { method: 'POST' });
 }
 
 // ── RAG Analytics ─────────────────────────────────────────────────────────

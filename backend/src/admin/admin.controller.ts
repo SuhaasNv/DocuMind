@@ -1,12 +1,14 @@
 import {
   Controller,
   Get,
+  Post,
   Patch,
   Delete,
   Param,
   Body,
   UseGuards,
   Query,
+  BadRequestException,
 } from '@nestjs/common';
 import { AdminService } from './admin.service.js';
 import { RolesGuard } from '../common/guards/roles.guard.js';
@@ -22,6 +24,14 @@ import {
   AdminDocumentsQueryDto,
 } from './dto/list-query.dto.js';
 import { PagePaginationDto } from '../common/dto/pagination.dto.js';
+
+/** BullMQ job ids are short opaque strings; reject garbage before hitting Redis. */
+export function validJobId(id: string): string {
+  if (typeof id !== 'string' || id.length === 0 || id.length > 128) {
+    throw new BadRequestException('Invalid job id');
+  }
+  return id;
+}
 
 @Controller('admin')
 @UseGuards(RolesGuard)
@@ -86,6 +96,38 @@ export class AdminController {
   @Get('jobs')
   async getJobs(@Query() query: PagePaginationDto) {
     return this.adminService.getJobStats(query.page, query.limit);
+  }
+
+  @Post('jobs/retry-failed')
+  async retryAllFailedJobs() {
+    return this.adminService.retryAllFailedJobs();
+  }
+
+  @Post('jobs/clean')
+  async cleanCompletedJobs() {
+    return this.adminService.cleanCompletedJobs();
+  }
+
+  @Post('jobs/:id/retry')
+  async retryJob(@Param('id') id: string) {
+    return this.adminService.retryJob(validJobId(id));
+  }
+
+  @Delete('jobs/:id')
+  async removeJob(@Param('id') id: string) {
+    return this.adminService.removeJob(validJobId(id));
+  }
+
+  // ── Document operations ───────────────────────────────────────────────────
+
+  @Delete('documents/:id')
+  async deleteDocument(@Param('id') id: string) {
+    return this.adminService.deleteDocument(id);
+  }
+
+  @Post('documents/:id/reprocess')
+  async reprocessDocument(@Param('id') id: string) {
+    return this.adminService.reprocessDocument(id);
   }
 
   // ── RAG Analytics ─────────────────────────────────────────────────────────

@@ -11,6 +11,12 @@ import {
   getRagStats,
   getSystemHealth,
   getOnlineUsers,
+  deleteDocument,
+  reprocessDocument,
+  retryJob,
+  removeJob,
+  retryAllFailedJobs,
+  cleanCompletedJobs,
   type DocStatus,
   type AdminUser,
 } from '@/lib/admin';
@@ -223,6 +229,12 @@ export default function AdminDashboard() {
     }
   }, [tabFromUrl]);
   const [deleteUserId, setDeleteUserId] = useState<string | null>(null);
+  const [docAction, setDocAction] = useState<{
+    type: 'delete' | 'reprocess';
+    id: string;
+    name: string;
+  } | null>(null);
+  const [removeJobId, setRemoveJobId] = useState<string | null>(null);
   const [userPage, setUserPage] = useState(1);
   const [docPage, setDocPage] = useState(1);
   const [docStatusFilter, setDocStatusFilter] = useState<DocStatus | undefined>();
@@ -317,6 +329,76 @@ export default function AdminDashboard() {
     onError: (err: Error) => {
       toast.error(err.message || 'Failed to update role');
     },
+  });
+
+  const invalidate = (...keys: string[]) => {
+    for (const key of keys) queryClient.invalidateQueries({ queryKey: [key] });
+  };
+
+  const docDeleteMutation = useMutation({
+    mutationFn: (id: string) => deleteDocument(accessToken!, id),
+    onSuccess: () => {
+      toast.success('Document deleted');
+      invalidate('adminDocs', 'adminMetrics');
+      setDocAction(null);
+    },
+    onError: (err: Error) => {
+      toast.error(err.message || 'Failed to delete document');
+      setDocAction(null);
+    },
+  });
+
+  const docReprocessMutation = useMutation({
+    mutationFn: (id: string) => reprocessDocument(accessToken!, id),
+    onSuccess: () => {
+      toast.success('Document queued for reprocessing');
+      invalidate('adminDocs', 'adminJobs', 'adminMetrics');
+      setDocAction(null);
+    },
+    onError: (err: Error) => {
+      toast.error(err.message || 'Failed to reprocess document');
+      setDocAction(null);
+    },
+  });
+
+  const jobRetryMutation = useMutation({
+    mutationFn: (id: string) => retryJob(accessToken!, id),
+    onSuccess: () => {
+      toast.success('Job queued for retry');
+      invalidate('adminJobs', 'adminMetrics');
+    },
+    onError: (err: Error) => toast.error(err.message || 'Failed to retry job'),
+  });
+
+  const jobRemoveMutation = useMutation({
+    mutationFn: (id: string) => removeJob(accessToken!, id),
+    onSuccess: () => {
+      toast.success('Job removed');
+      invalidate('adminJobs', 'adminMetrics');
+      setRemoveJobId(null);
+    },
+    onError: (err: Error) => {
+      toast.error(err.message || 'Failed to remove job');
+      setRemoveJobId(null);
+    },
+  });
+
+  const retryFailedMutation = useMutation({
+    mutationFn: () => retryAllFailedJobs(accessToken!),
+    onSuccess: (res) => {
+      toast.success(`Retried ${res.retried} failed job${res.retried === 1 ? '' : 's'}`);
+      invalidate('adminJobs', 'adminMetrics');
+    },
+    onError: (err: Error) => toast.error(err.message || 'Failed to retry jobs'),
+  });
+
+  const cleanJobsMutation = useMutation({
+    mutationFn: () => cleanCompletedJobs(accessToken!),
+    onSuccess: (res) => {
+      toast.success(`Cleaned ${res.cleaned} completed job${res.cleaned === 1 ? '' : 's'}`);
+      invalidate('adminJobs', 'adminMetrics');
+    },
+    onError: (err: Error) => toast.error(err.message || 'Failed to clean jobs'),
   });
 
   // Redirect non-admins (after all hooks)
@@ -700,19 +782,20 @@ export default function AdminDashboard() {
                       <TableHead>Progress</TableHead>
                       <TableHead>Size</TableHead>
                       <TableHead>Uploaded</TableHead>
+                      <TableHead className="text-right">Actions</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
                     {docsLoading && (
                       <TableRow>
-                        <TableCell colSpan={6} className="text-center py-8 text-muted-foreground">
+                        <TableCell colSpan={7} className="text-center py-8 text-muted-foreground">
                           Loading…
                         </TableCell>
                       </TableRow>
                     )}
                     {!docsLoading && docsData?.documents?.length === 0 && (
                       <TableRow>
-                        <TableCell colSpan={6} className="text-center py-8 text-muted-foreground">
+                        <TableCell colSpan={7} className="text-center py-8 text-muted-foreground">
                           No documents found.
                         </TableCell>
                       </TableRow>
@@ -765,6 +848,32 @@ export default function AdminDashboard() {
                           </TableCell>
                           <TableCell className="text-muted-foreground text-sm">
                             {new Date(doc.uploadedAt).toLocaleDateString()}
+                          </TableCell>
+                          <TableCell className="text-right">
+                            <div className="flex items-center justify-end gap-2">
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                className="h-8 px-3 text-xs gap-1.5"
+                                onClick={() =>
+                                  setDocAction({ type: 'reprocess', id: doc.id, name: doc.name })
+                                }
+                              >
+                                <RefreshCw className="w-3.5 h-3.5" />
+                                Reprocess
+                              </Button>
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                className="h-8 text-destructive border-destructive/30 hover:bg-destructive/10 hover:text-destructive"
+                                onClick={() =>
+                                  setDocAction({ type: 'delete', id: doc.id, name: doc.name })
+                                }
+                                aria-label={`Delete ${doc.name}`}
+                              >
+                                <Trash2 className="w-3.5 h-3.5" />
+                              </Button>
+                            </div>
                           </TableCell>
                         </TableRow>
                       );
@@ -823,13 +932,48 @@ export default function AdminDashboard() {
             {/* Job list */}
             <Card className="border-border">
               <CardHeader className="pb-3">
-                <CardTitle className="text-base flex items-center gap-2">
-                  <Briefcase className="w-4 h-4" />
-                  {JOB_STATE_CONFIG[jobState].label} Jobs
-                  <span className="text-sm font-normal text-muted-foreground">
-                    · {jobStats?.counts?.[jobState] ?? 0}
-                  </span>
-                </CardTitle>
+                <div className="flex items-center justify-between flex-wrap gap-3">
+                  <CardTitle className="text-base flex items-center gap-2">
+                    <Briefcase className="w-4 h-4" />
+                    {JOB_STATE_CONFIG[jobState].label} Jobs
+                    <span className="text-sm font-normal text-muted-foreground">
+                      · {jobStats?.counts?.[jobState] ?? 0}
+                    </span>
+                  </CardTitle>
+                  <div className="flex items-center gap-2">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="gap-2"
+                      disabled={
+                        retryFailedMutation.isPending ||
+                        (jobStats?.counts?.failed ?? 0) === 0
+                      }
+                      onClick={() => retryFailedMutation.mutate()}
+                    >
+                      {retryFailedMutation.isPending ? (
+                        <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                      ) : (
+                        <RefreshCw className="w-3.5 h-3.5" />
+                      )}
+                      Retry All Failed
+                    </Button>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="gap-2"
+                      disabled={cleanJobsMutation.isPending}
+                      onClick={() => cleanJobsMutation.mutate()}
+                    >
+                      {cleanJobsMutation.isPending ? (
+                        <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                      ) : (
+                        <Trash2 className="w-3.5 h-3.5" />
+                      )}
+                      Clean Completed
+                    </Button>
+                  </div>
+                </div>
               </CardHeader>
               <CardContent>
                 <div className="rounded-lg border border-border overflow-hidden">
@@ -844,12 +988,13 @@ export default function AdminDashboard() {
                           {jobState === 'failed' ? 'Failed Reason' : 'Queued At'}
                         </TableHead>
                         {jobState === 'completed' && <TableHead>Finished</TableHead>}
+                        <TableHead className="text-right">Actions</TableHead>
                       </TableRow>
                     </TableHeader>
                     <TableBody>
                       {jobsLoading && (
                         <TableRow>
-                          <TableCell colSpan={5} className="text-center py-8 text-muted-foreground">
+                          <TableCell colSpan={7} className="text-center py-8 text-muted-foreground">
                             Loading…
                           </TableCell>
                         </TableRow>
@@ -858,7 +1003,7 @@ export default function AdminDashboard() {
                         (jobStats?.jobs?.[jobState]?.length ?? 0) === 0 && (
                           <TableRow>
                             <TableCell
-                              colSpan={6}
+                              colSpan={7}
                               className="text-center py-8 text-muted-foreground"
                             >
                               No {jobState} jobs.
@@ -887,6 +1032,34 @@ export default function AdminDashboard() {
                                 : '-'}
                             </TableCell>
                           )}
+                          <TableCell className="text-right">
+                            <div className="flex items-center justify-end gap-2">
+                              {jobState === 'failed' && (
+                                <Button
+                                  variant="outline"
+                                  size="sm"
+                                  className="h-8 px-3 text-xs gap-1.5"
+                                  disabled={jobRetryMutation.isPending || !job.id}
+                                  onClick={() => job.id && jobRetryMutation.mutate(job.id)}
+                                >
+                                  <RefreshCw className="w-3.5 h-3.5" />
+                                  Retry
+                                </Button>
+                              )}
+                              {jobState !== 'active' && (
+                                <Button
+                                  variant="outline"
+                                  size="sm"
+                                  className="h-8 text-destructive border-destructive/30 hover:bg-destructive/10 hover:text-destructive"
+                                  disabled={!job.id}
+                                  onClick={() => job.id && setRemoveJobId(job.id)}
+                                  aria-label={`Remove job ${job.id ?? ''}`}
+                                >
+                                  <Trash2 className="w-3.5 h-3.5" />
+                                </Button>
+                              )}
+                            </div>
+                          </TableCell>
                         </TableRow>
                       ))}
                     </TableBody>
@@ -1041,6 +1214,78 @@ export default function AdminDashboard() {
                 <Loader2 className="w-4 h-4 animate-spin" />
               ) : (
                 'Delete'
+              )}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* ── Document action confirmation ─────────────────────────────────── */}
+      <AlertDialog
+        open={!!docAction}
+        onOpenChange={(open) => !open && setDocAction(null)}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>
+              {docAction?.type === 'delete'
+                ? 'Delete this document?'
+                : 'Reprocess this document?'}
+            </AlertDialogTitle>
+            <AlertDialogDescription>
+              {docAction?.type === 'delete'
+                ? `"${docAction?.name}" and all its chunks will be permanently deleted, including the uploaded file. This action cannot be undone.`
+                : `"${docAction?.name}" will have its chunks cleared and be re-queued for processing from the original file.`}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              className={
+                docAction?.type === 'delete'
+                  ? 'bg-destructive text-destructive-foreground hover:bg-destructive/90'
+                  : undefined
+              }
+              onClick={() => {
+                if (!docAction) return;
+                if (docAction.type === 'delete') docDeleteMutation.mutate(docAction.id);
+                else docReprocessMutation.mutate(docAction.id);
+              }}
+            >
+              {docDeleteMutation.isPending || docReprocessMutation.isPending ? (
+                <Loader2 className="w-4 h-4 animate-spin" />
+              ) : docAction?.type === 'delete' ? (
+                'Delete'
+              ) : (
+                'Reprocess'
+              )}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* ── Job removal confirmation ─────────────────────────────────────── */}
+      <AlertDialog
+        open={!!removeJobId}
+        onOpenChange={(open) => !open && setRemoveJobId(null)}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Remove this job?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Job {removeJobId} will be removed from the queue. This action cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              onClick={() => removeJobId && jobRemoveMutation.mutate(removeJobId)}
+            >
+              {jobRemoveMutation.isPending ? (
+                <Loader2 className="w-4 h-4 animate-spin" />
+              ) : (
+                'Remove'
               )}
             </AlertDialogAction>
           </AlertDialogFooter>

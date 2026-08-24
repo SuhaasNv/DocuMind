@@ -341,6 +341,156 @@ export class AdminService {
     }
   }
 
+  private async findJobOr404(jobId: string) {
+    let job: import('bullmq').Job | undefined;
+    try {
+      job = await this.docQueue.getJob(jobId);
+    } catch {
+      throw new NotFoundException('Job not found');
+    }
+    if (!job) throw new NotFoundException('Job not found');
+    return job;
+  }
+
+  /** Re-run a FAILED job (BullMQ Job.retry moves it back to waiting). */
+  async retryJob(jobId: string) {
+    const job = await this.findJobOr404(jobId);
+    const state = await job.getState();
+    if (state !== 'failed') {
+      throw new ConflictException(
+        `Only failed jobs can be retried (job is ${state})`,
+      );
+    }
+    await job.retry();
+    return { success: true };
+  }
+
+  async removeJob(jobId: string) {
+    const job = await this.findJobOr404(jobId);
+    try {
+      await job.remove();
+    } catch {
+      // BullMQ refuses to remove locked (active) jobs.
+      throw new ConflictException(
+        'Job could not be removed (it may be running)',
+      );
+    }
+    return { success: true };
+  }
+
+  async retryAllFailedJobs() {
+    try {
+      const failed = await this.docQueue.getJobs(['failed'], 0, -1);
+      let retried = 0;
+      for (const job of failed) {
+        try {
+          await job.retry();
+          retried++;
+        } catch {
+          // Job may have been removed/retried concurrently; skip it.
+        }
+      }
+      return { retried };
+    } catch {
+      throw new ConflictException('Queue unavailable');
+    }
+  }
+
+  async cleanCompletedJobs() {
+    try {
+      // grace 0: clean everything completed, up to 1000 per call.
+      const cleaned = await this.docQueue.clean(0, 1000, 'completed');
+      return { cleaned: cleaned.length };
+    } catch {
+      throw new ConflictException('Queue unavailable');
+    }
+  }
+
+  // ── Document operations ───────────────────────────────────────────────────
+
+  /**
+   * Admin document deletion, any owner: DB row (chunks and collection
+   * membership cascade), disk file (best-effort), chat-cache scope for the
+   * document AND for every collection that contained it (scopes computed
+   * from pre-delete membership). Share links are point-in-time snapshots
+   * (never joined back to documents), so they are untouched by design.
+   */
+  async deleteDocument(id: string) {
+    const document = await this.prisma.document.findUnique({
+      where: { id },
+      include: {
+        collections: {
+          select: {
+            collection: {
+              select: {
+                id: true,
+                documents: { select: { documentId: true } },
+              },
+            },
+          },
+        },
+      },
+    });
+    if (!document) throw new NotFoundException('Document not found');
+
+    await this.prisma.document.delete({ where: { id } });
+
+    if (document.filePath) {
+      try {
+        await unlink(path.join(process.cwd(), document.filePath));
+      } catch (err) {
+        this.logger.warn(
+          `Failed to delete file for document ${id} at ${document.filePath}: ${err instanceof Error ? err.message : String(err)}`,
+        );
+      }
+    }
+
+    void this.chatCache.invalidateScope(id);
+    for (const membership of document.collections) {
+      void this.chatCache.invalidateScope(
+        collectionCacheScope(
+          membership.collection.id,
+          membership.collection.documents.map((d) => d.documentId),
+        ),
+      );
+    }
+    return { success: true };
+  }
+
+  /**
+   * Admin reprocess, any status (mirrors the user retry path, which is
+   * FAILED-only and owner-scoped): clear chunks, reset to PENDING, enqueue.
+   * The job processor invalidates the chat-cache scope when it finishes.
+   */
+  async reprocessDocument(id: string) {
+    const document = await this.prisma.document.findUnique({ where: { id } });
+    if (!document) throw new NotFoundException('Document not found');
+    if (!document.filePath) {
+      throw new ConflictException(
+        'Document has no stored file; it cannot be reprocessed',
+      );
+    }
+
+    await this.prisma.documentChunk.deleteMany({ where: { documentId: id } });
+    await this.prisma.document.update({
+      where: { id },
+      data: {
+        status: DocumentStatus.PENDING,
+        progress: 0,
+        stage: null,
+        failureReason: null,
+        chunkCount: null,
+      },
+    });
+    await this.docQueue.add(
+      'process',
+      { documentId: id, userId: document.userId },
+      { attempts: 3, backoff: { type: 'exponential', delay: 2000 } },
+    );
+    this.logger.log(`Document ${id} re-queued for processing (admin).`);
+    return { success: true };
+  }
+
   // ── RAG Analytics ─────────────────────────────────────────────────────────
 
   async getRagStats() {
