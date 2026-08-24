@@ -13,7 +13,10 @@ import { PrismaService } from '../prisma/prisma.service.js';
 import { DocumentChunkService } from '../chunks/document-chunk.service.js';
 import { InjectQueue } from '@nestjs/bullmq';
 import { Queue } from 'bullmq';
-import type { DocumentResponseDto } from './dto/document-response.dto.js';
+import type {
+  DocumentListResponseDto,
+  DocumentResponseDto,
+} from './dto/document-response.dto.js';
 import { ChatCacheService } from '../rag/chat-cache.service.js';
 import { DocumentSummaryService } from '../rag/document-summary.service.js';
 
@@ -80,12 +83,22 @@ export class DocumentsService {
     return this.toResponse(documentWithPath);
   }
 
-  async findAllByUser(userId: string): Promise<DocumentResponseDto[]> {
-    const documents = await this.prisma.document.findMany({
-      where: { userId },
-      orderBy: { uploadedAt: 'desc' },
-    });
-    return documents.map((d) => this.toResponse(d));
+  /** Paginated list. chunkCount/pageCount are columns, so there is no N+1. */
+  async findAllByUser(
+    userId: string,
+    take: number,
+    skip: number,
+  ): Promise<DocumentListResponseDto> {
+    const [documents, total] = await Promise.all([
+      this.prisma.document.findMany({
+        where: { userId },
+        orderBy: { uploadedAt: 'desc' },
+        take,
+        skip,
+      }),
+      this.prisma.document.count({ where: { userId } }),
+    ]);
+    return { items: documents.map((d) => this.toResponse(d)), total };
   }
 
   async findOne(id: string, userId: string): Promise<DocumentResponseDto> {
@@ -186,7 +199,13 @@ export class DocumentsService {
     await this.documentChunkService.deleteByDocumentId(id);
     const updated = await this.prisma.document.update({
       where: { id },
-      data: { status: DocumentStatus.PENDING, progress: 0 },
+      data: {
+        status: DocumentStatus.PENDING,
+        progress: 0,
+        stage: null,
+        failureReason: null,
+        chunkCount: null,
+      },
     });
     await this.documentQueue.add(
       'process',
@@ -235,6 +254,10 @@ export class DocumentsService {
       status: doc.status,
       progress: doc.progress,
       size: doc.size ?? undefined,
+      pageCount: doc.pageCount ?? undefined,
+      chunkCount: doc.chunkCount ?? undefined,
+      stage: doc.stage ?? undefined,
+      failureReason: doc.failureReason ?? undefined,
       summary: doc.summary,
       suggestedQuestions: this.toQuestions(doc.suggestedQuestions),
     };

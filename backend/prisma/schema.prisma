@@ -41,13 +41,19 @@ model User {
 }
 
 model Document {
-  id                 String               @id @default(cuid())
-  userId             String               @map("user_id")
-  name               String
-  status             DocumentStatus       @default(PENDING)
-  progress           Int                  @default(0)
-  size               Int? // bytes
-  filePath           String?              @map("file_path") // relative path under uploads dir
+  id         String         @id @default(cuid())
+  userId     String         @map("user_id")
+  name       String
+  status     DocumentStatus @default(PENDING)
+  progress   Int            @default(0)
+  size       Int? // bytes
+  filePath   String?        @map("file_path") // relative path under uploads dir
+  pageCount  Int?           @map("page_count")
+  chunkCount Int?           @map("chunk_count")
+  // EXTRACTING | CHUNKING | EMBEDDING | FINALIZING while PROCESSING; null otherwise
+  stage         String?
+  // Safe, user-facing message set when processing fails (never raw errors)
+  failureReason      String?              @map("failure_reason")
   summary            String?              @db.Text // ~3-sentence LLM summary (instant activation)
   suggestedQuestions Json?                @map("suggested_questions") // string[] of questions the doc can answer
   uploadedAt         DateTime             @default(now()) @map("uploaded_at")

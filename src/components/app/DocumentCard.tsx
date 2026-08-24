@@ -17,6 +17,7 @@ import {
 import { Document, DocumentStatus, useAppStore } from '@/stores/useAppStore';
 import { getApiBaseUrl } from '@/lib/api';
 import { useInvalidateDocuments } from '@/hooks/useDocumentsQuery';
+import { formatFileSize, stageLabel } from '@/lib/format';
 import { formatDistanceToNow } from 'date-fns';
 import { toast } from 'sonner';
 
@@ -114,11 +115,28 @@ const DocumentCard = ({ document }: DocumentCardProps) => {
             </span>
           </div>
 
-          <p className="text-sm text-muted-foreground mb-3">
+          <p className="text-sm text-muted-foreground mb-3 truncate">
             Uploaded {formatDistanceToNow(document.uploadedAt, { addSuffix: true })}
+            {document.size != null && ` · ${formatFileSize(document.size)}`}
+            {document.pageCount != null &&
+              ` · ${document.pageCount} ${document.pageCount === 1 ? 'page' : 'pages'}`}
           </p>
 
-          {/* Progress bar */}
+          {/* One-line summary (Phase 8 populates) */}
+          {document.status === 'DONE' && document.summary && (
+            <p className="text-sm text-muted-foreground/90 mb-3 line-clamp-1">
+              {document.summary}
+            </p>
+          )}
+
+          {/* Failure reason */}
+          {document.status === 'FAILED' && document.failureReason && (
+            <p className="text-sm text-destructive/90 mb-3">
+              {document.failureReason}
+            </p>
+          )}
+
+          {/* Progress bar with the real processing stage */}
           {(document.status === 'PROCESSING' || document.status === 'PENDING') && (
             <div className="mb-4">
               <div className="progress-bar">
@@ -130,10 +148,7 @@ const DocumentCard = ({ document }: DocumentCardProps) => {
                 />
               </div>
               <p className="text-xs text-muted-foreground mt-1.5">
-                {document.progress < 30 && 'Uploading...'}
-                {document.progress >= 30 && document.progress < 70 && 'Processing document...'}
-                {document.progress >= 70 && document.progress < 100 && 'Finalizing...'}
-                {document.progress === 100 && 'Complete'}
+                {stageLabel(document.stage, document.status)}
               </p>
             </div>
           )}
@@ -190,7 +205,8 @@ const DocumentCard = ({ document }: DocumentCardProps) => {
               variant="ghost"
               size="sm"
               onClick={handleDeleteClick}
-              className="text-muted-foreground hover:text-destructive opacity-0 group-hover:opacity-100 transition-opacity"
+              aria-label={`Delete ${document.name}`}
+              className="text-muted-foreground hover:text-destructive opacity-0 group-hover:opacity-100 focus-visible:opacity-100 [@media(pointer:coarse)]:opacity-100 transition-opacity"
             >
               <Trash2 className="w-4 h-4" />
             </Button>

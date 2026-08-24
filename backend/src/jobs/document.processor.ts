@@ -12,6 +12,7 @@ import { ChatCacheService } from '../rag/chat-cache.service.js';
 import { LlmService } from '../rag/llm.service.js';
 import { DocumentSummaryService } from '../rag/document-summary.service.js';
 import { collectionCacheScope } from '../collections/collections.service.js';
+import { FAILURE_REASONS, mapFailureReason } from './failure-reason.js';
 
 const QUEUE_NAME = 'document-processing';
 
@@ -136,12 +137,21 @@ export class DocumentProcessor extends WorkerHost {
     const ok = await this.updateProgress(documentId, document.userId, {
       status: DocumentStatus.PROCESSING,
       progress: 0,
+      stage: 'EXTRACTING',
+      failureReason: null,
+      pageCount: null,
+      chunkCount: null,
     });
     if (!ok) return;
 
     try {
       if (!document.filePath) {
-        await this.setFailed(documentId, document.userId, 'No file path');
+        await this.setFailed(
+          documentId,
+          document.userId,
+          'No file path',
+          FAILURE_REASONS.missingFile,
+        );
         return;
       }
 
@@ -179,6 +189,14 @@ export class DocumentProcessor extends WorkerHost {
           : null;
       };
 
+      const pageCount =
+        textResult?.total ?? (pageTexts.length > 0 ? pageTexts.length : null);
+      const okExtract = await this.updateProgress(documentId, document.userId, {
+        stage: 'CHUNKING',
+        pageCount,
+      });
+      if (!okExtract) return;
+
       const textChunks = chunkText(text);
       if (textChunks.length === 0) {
         // No extractable text (e.g. scanned PDF): finish with zero chunks;
@@ -187,12 +205,15 @@ export class DocumentProcessor extends WorkerHost {
         await this.updateProgress(documentId, document.userId, {
           status: DocumentStatus.DONE,
           progress: 100,
+          stage: null,
+          chunkCount: 0,
         });
         return;
       }
 
       const okChunk = await this.updateProgress(documentId, document.userId, {
         progress: PROGRESS_AFTER_CHUNKING,
+        stage: 'EMBEDDING',
       });
       if (!okChunk) return;
 
@@ -244,6 +265,12 @@ export class DocumentProcessor extends WorkerHost {
         if (!okProgress) return;
       }
 
+      const okFinal = await this.updateProgress(documentId, document.userId, {
+        stage: 'FINALIZING',
+        chunkCount: totalChunks,
+      });
+      if (!okFinal) return;
+
       // Instant activation: one LLM call for summary + suggested questions.
       // Best-effort — a failure logs a warning and the document still goes DONE.
       await this.summaryService.generateForText(
@@ -255,6 +282,7 @@ export class DocumentProcessor extends WorkerHost {
       await this.updateProgress(documentId, document.userId, {
         status: DocumentStatus.DONE,
         progress: 100,
+        stage: null,
       });
       this.logger.log(
         `Document ${documentId} processed successfully (${totalChunks} chunks in ${Date.now() - startedAt}ms embed+insert)`,
@@ -279,6 +307,7 @@ export class DocumentProcessor extends WorkerHost {
         documentId,
         document.userId,
         err instanceof Error ? err.message : 'Processing failed',
+        mapFailureReason(err),
       );
     }
   }
@@ -286,7 +315,14 @@ export class DocumentProcessor extends WorkerHost {
   private async updateProgress(
     documentId: string,
     _userId: string,
-    updates: { status?: DocumentStatus; progress?: number },
+    updates: {
+      status?: DocumentStatus;
+      progress?: number;
+      stage?: string | null;
+      failureReason?: string | null;
+      pageCount?: number | null;
+      chunkCount?: number | null;
+    },
   ): Promise<boolean> {
     try {
       await this.prisma.document.update({
@@ -306,15 +342,22 @@ export class DocumentProcessor extends WorkerHost {
     }
   }
 
+  /**
+   * Mark FAILED. `reason` is logged (may contain raw error details);
+   * `safeReason` is the sanitized user-facing message stored on the row.
+   */
   private async setFailed(
     documentId: string,
     userId: string,
     reason: string,
+    safeReason: string,
   ): Promise<void> {
     this.logger.warn(`Document ${documentId} marked FAILED: ${reason}`);
     await this.updateProgress(documentId, userId, {
       status: DocumentStatus.FAILED,
       progress: 100,
+      stage: null,
+      failureReason: safeReason,
     });
   }
 }

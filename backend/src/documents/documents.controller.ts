@@ -31,7 +31,11 @@ import {
   CurrentUser,
   type JwtPayload,
 } from '../common/decorators/current-user.decorator.js';
-import type { DocumentResponseDto } from './dto/document-response.dto.js';
+import type {
+  DocumentListResponseDto,
+  DocumentResponseDto,
+} from './dto/document-response.dto.js';
+import { PaginationDto } from '../common/dto/pagination.dto.js';
 import type { RetrievalResponseDto } from './dto/retrieval-response.dto.js';
 import type { ChatResponseDto } from './dto/chat-response.dto.js';
 import { RetrievalQueryDto } from './dto/retrieval-query.dto.js';
@@ -81,8 +85,13 @@ export class DocumentsController {
   @Get()
   async findAll(
     @CurrentUser() user: JwtPayload,
-  ): Promise<DocumentResponseDto[]> {
-    return this.documentsService.findAllByUser(user.sub);
+    @Query() pagination: PaginationDto,
+  ): Promise<DocumentListResponseDto> {
+    return this.documentsService.findAllByUser(
+      user.sub,
+      pagination.take ?? 24,
+      pagination.skip ?? 0,
+    );
   }
 
   @Get(':id')
