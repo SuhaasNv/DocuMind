@@ -17,6 +17,7 @@ import {
   removeJob,
   retryAllFailedJobs,
   cleanCompletedJobs,
+  getAuditLog,
   type DocStatus,
   type AdminUser,
 } from '@/lib/admin';
@@ -46,6 +47,7 @@ import {
   MessageSquare,
   Lightbulb,
   Link2,
+  ScrollText,
 } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
@@ -90,7 +92,7 @@ import { cn } from '@/lib/utils';
 
 // ── Types & constants ─────────────────────────────────────────────────────
 
-type Tab = 'overview' | 'users' | 'documents' | 'jobs' | 'analytics';
+type Tab = 'overview' | 'users' | 'documents' | 'jobs' | 'analytics' | 'audit';
 
 const PAGE_SIZE = 15;
 
@@ -219,7 +221,8 @@ export default function AdminDashboard() {
 
   const tabFromUrl = searchParams.get('tab') as Tab | null;
   const [activeTab, setActiveTab] = useState<Tab>(
-    tabFromUrl && ['overview', 'users', 'documents', 'jobs', 'analytics'].includes(tabFromUrl)
+    tabFromUrl &&
+      ['overview', 'users', 'documents', 'jobs', 'analytics', 'audit'].includes(tabFromUrl)
       ? tabFromUrl
       : 'overview',
   );
@@ -228,7 +231,7 @@ export default function AdminDashboard() {
   useEffect(() => {
     if (
       tabFromUrl &&
-      ['overview', 'users', 'documents', 'jobs', 'analytics'].includes(tabFromUrl)
+      ['overview', 'users', 'documents', 'jobs', 'analytics', 'audit'].includes(tabFromUrl)
     ) {
       setActiveTab(tabFromUrl);
     }
@@ -242,6 +245,7 @@ export default function AdminDashboard() {
   const [removeJobId, setRemoveJobId] = useState<string | null>(null);
   const [userPage, setUserPage] = useState(1);
   const [docPage, setDocPage] = useState(1);
+  const [auditPage, setAuditPage] = useState(1);
   const [docStatusFilter, setDocStatusFilter] = useState<DocStatus | undefined>();
   const [jobState, setJobState] = useState<'active' | 'waiting' | 'failed' | 'completed' | 'delayed'>('active');
   const [userSearch, setUserSearch] = useState('');
@@ -307,6 +311,12 @@ export default function AdminDashboard() {
     queryFn: () => getRagStats(accessToken!),
     enabled,
     refetchInterval: 60000,
+  });
+
+  const { data: auditData, isLoading: auditLoading } = useQuery({
+    queryKey: ['adminAudit', auditPage],
+    queryFn: () => getAuditLog(accessToken!, auditPage, PAGE_SIZE),
+    enabled,
   });
 
   // Mutations
@@ -437,6 +447,7 @@ export default function AdminDashboard() {
     },
     { id: 'jobs', label: 'Jobs', icon: Briefcase },
     { id: 'analytics', label: 'Analytics', icon: TrendingUp },
+    { id: 'audit', label: 'Audit', icon: ScrollText },
   ];
 
   return (
@@ -705,7 +716,7 @@ export default function AdminDashboard() {
                       <UserRow
                         key={u.id}
                         user={u}
-                        currentUserId={useAppStore.getState().user?.id}
+                        currentUserId={user?.id}
                         onDelete={() => setDeleteUserId(u.id)}
                         onRoleChange={(role) =>
                           roleMutation.mutate({ userId: u.id, role })
@@ -1266,6 +1277,86 @@ export default function AdminDashboard() {
               </CardContent>
             </Card>
           </div>
+        )}
+
+        {/* ═══════════════════════════════════════════════════════════════
+            AUDIT TAB
+        ═══════════════════════════════════════════════════════════════ */}
+        {activeTab === 'audit' && (
+          <Card className="border-border">
+            <CardHeader className="pb-3">
+              <div className="flex flex-col gap-1">
+                <CardTitle className="text-base flex items-center gap-2">
+                  <ScrollText className="w-4 h-4" />
+                  Audit Log
+                  {auditData && (
+                    <span className="text-sm font-normal text-muted-foreground">
+                      · {auditData.total} total
+                    </span>
+                  )}
+                </CardTitle>
+                <p className="text-xs text-muted-foreground">
+                  Every mutating admin action, newest first. Entries are append-only.
+                </p>
+              </div>
+            </CardHeader>
+            <CardContent>
+              <div className="rounded-lg border border-border overflow-hidden">
+                <Table>
+                  <TableHeader>
+                    <TableRow className="bg-muted/50">
+                      <TableHead>When</TableHead>
+                      <TableHead>Admin</TableHead>
+                      <TableHead>Action</TableHead>
+                      <TableHead>Target</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {auditLoading && (
+                      <TableRow>
+                        <TableCell colSpan={4} className="text-center py-8 text-muted-foreground">
+                          Loading…
+                        </TableCell>
+                      </TableRow>
+                    )}
+                    {!auditLoading && auditData?.entries?.length === 0 && (
+                      <TableRow>
+                        <TableCell colSpan={4} className="text-center py-8 text-muted-foreground">
+                          No audit entries yet.
+                        </TableCell>
+                      </TableRow>
+                    )}
+                    {auditData?.entries?.map((entry) => (
+                      <TableRow key={entry.id} className="hover:bg-muted/30">
+                        <TableCell className="text-muted-foreground text-sm whitespace-nowrap">
+                          {new Date(entry.createdAt).toLocaleString()}
+                        </TableCell>
+                        <TableCell className="text-sm">{entry.adminEmail}</TableCell>
+                        <TableCell>
+                          <Badge
+                            variant="outline"
+                            className="border-border text-foreground font-mono text-xs"
+                          >
+                            {entry.action}
+                          </Badge>
+                        </TableCell>
+                        <TableCell className="text-muted-foreground text-xs font-mono truncate max-w-[220px]">
+                          {entry.targetType}:{entry.targetId}
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </div>
+
+              <Pagination
+                page={auditPage}
+                total={auditData?.total ?? 0}
+                pageSize={PAGE_SIZE}
+                onPage={setAuditPage}
+              />
+            </CardContent>
+          </Card>
         )}
       </div>
 

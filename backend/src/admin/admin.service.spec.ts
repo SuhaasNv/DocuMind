@@ -35,6 +35,11 @@ interface PrismaMock {
   documentChunk: {
     deleteMany: jest.Mock;
   };
+  adminAuditLog: {
+    create: jest.Mock;
+    findMany: jest.Mock;
+    count: jest.Mock;
+  };
 }
 
 interface QueueMock {
@@ -60,6 +65,11 @@ function setup() {
     },
     documentChunk: {
       deleteMany: jest.fn().mockResolvedValue({ count: 0 }),
+    },
+    adminAuditLog: {
+      create: jest.fn().mockResolvedValue({}),
+      findMany: jest.fn().mockResolvedValue([]),
+      count: jest.fn().mockResolvedValue(0),
     },
   };
   const invalidateScope = jest.fn().mockResolvedValue(undefined);
@@ -220,7 +230,7 @@ describe('AdminService job operations', () => {
   it('404s retry of a non-existent job (not 500)', async () => {
     const { service, queue } = setup();
     queue.getJob.mockResolvedValue(undefined);
-    await expect(service.retryJob('missing')).rejects.toBeInstanceOf(
+    await expect(service.retryJob(ADMIN_ID, 'missing')).rejects.toBeInstanceOf(
       NotFoundException,
     );
   });
@@ -232,7 +242,7 @@ describe('AdminService job operations', () => {
       getState: jest.fn().mockResolvedValue('completed'),
       retry,
     });
-    await expect(service.retryJob('1')).rejects.toBeInstanceOf(
+    await expect(service.retryJob(ADMIN_ID, '1')).rejects.toBeInstanceOf(
       ConflictException,
     );
     expect(retry).not.toHaveBeenCalled();
@@ -241,20 +251,24 @@ describe('AdminService job operations', () => {
       getState: jest.fn().mockResolvedValue('failed'),
       retry,
     });
-    await expect(service.retryJob('1')).resolves.toEqual({ success: true });
+    await expect(service.retryJob(ADMIN_ID, '1')).resolves.toEqual({
+      success: true,
+    });
     expect(retry).toHaveBeenCalled();
   });
 
   it('404s removal of a non-existent job and removes an existing one', async () => {
     const { service, queue } = setup();
     queue.getJob.mockResolvedValue(undefined);
-    await expect(service.removeJob('missing')).rejects.toBeInstanceOf(
+    await expect(service.removeJob(ADMIN_ID, 'missing')).rejects.toBeInstanceOf(
       NotFoundException,
     );
 
     const remove = jest.fn().mockResolvedValue(undefined);
     queue.getJob.mockResolvedValue({ remove });
-    await expect(service.removeJob('1')).resolves.toEqual({ success: true });
+    await expect(service.removeJob(ADMIN_ID, '1')).resolves.toEqual({
+      success: true,
+    });
     expect(remove).toHaveBeenCalled();
   });
 
@@ -265,7 +279,7 @@ describe('AdminService job operations', () => {
       { retry: jest.fn().mockRejectedValue(new Error('gone')) },
       { retry: jest.fn().mockResolvedValue(undefined) },
     ]);
-    await expect(service.retryAllFailedJobs()).resolves.toEqual({
+    await expect(service.retryAllFailedJobs(ADMIN_ID)).resolves.toEqual({
       retried: 2,
     });
   });
@@ -273,7 +287,7 @@ describe('AdminService job operations', () => {
   it('clean reports how many completed jobs were removed', async () => {
     const { service, queue } = setup();
     queue.clean.mockResolvedValue(['1', '2', '3']);
-    await expect(service.cleanCompletedJobs()).resolves.toEqual({
+    await expect(service.cleanCompletedJobs(ADMIN_ID)).resolves.toEqual({
       cleaned: 3,
     });
     expect(queue.clean).toHaveBeenCalledWith(0, 1000, 'completed');
@@ -301,7 +315,7 @@ describe('AdminService document operations', () => {
     const { service, prisma, invalidateScope } = setup();
     prisma.document.findUnique.mockResolvedValue(doc);
 
-    await expect(service.deleteDocument('doc-1')).resolves.toEqual({
+    await expect(service.deleteDocument(ADMIN_ID, 'doc-1')).resolves.toEqual({
       success: true,
     });
     expect(prisma.document.delete).toHaveBeenCalledWith({
@@ -318,12 +332,12 @@ describe('AdminService document operations', () => {
   it('404s deletion/reprocess of unknown document', async () => {
     const { service, prisma } = setup();
     prisma.document.findUnique.mockResolvedValue(null);
-    await expect(service.deleteDocument('nope')).rejects.toBeInstanceOf(
-      NotFoundException,
-    );
-    await expect(service.reprocessDocument('nope')).rejects.toBeInstanceOf(
-      NotFoundException,
-    );
+    await expect(
+      service.deleteDocument(ADMIN_ID, 'nope'),
+    ).rejects.toBeInstanceOf(NotFoundException);
+    await expect(
+      service.reprocessDocument(ADMIN_ID, 'nope'),
+    ).rejects.toBeInstanceOf(NotFoundException);
   });
 
   it('reprocess clears chunks, resets to PENDING, and enqueues (any status)', async () => {
@@ -333,9 +347,11 @@ describe('AdminService document operations', () => {
       status: 'DONE',
     });
 
-    await expect(service.reprocessDocument('doc-1')).resolves.toEqual({
-      success: true,
-    });
+    await expect(service.reprocessDocument(ADMIN_ID, 'doc-1')).resolves.toEqual(
+      {
+        success: true,
+      },
+    );
     expect(prisma.documentChunk.deleteMany).toHaveBeenCalledWith({
       where: { documentId: 'doc-1' },
     });
@@ -355,9 +371,102 @@ describe('AdminService document operations', () => {
   it('409s reprocess when the original file is gone', async () => {
     const { service, prisma, queue } = setup();
     prisma.document.findUnique.mockResolvedValue({ ...doc, filePath: null });
-    await expect(service.reprocessDocument('doc-1')).rejects.toBeInstanceOf(
-      ConflictException,
-    );
+    await expect(
+      service.reprocessDocument(ADMIN_ID, 'doc-1'),
+    ).rejects.toBeInstanceOf(ConflictException);
     expect(queue.add).not.toHaveBeenCalled();
+  });
+});
+
+describe('AdminService audit fan-in', () => {
+  beforeEach(() => unlinkMock.mockClear());
+
+  function auditActions(prisma: PrismaMock): string[] {
+    const calls = prisma.adminAuditLog.create.mock.calls as Array<
+      [{ data: { adminUserId: string; action: string } }]
+    >;
+    for (const [arg] of calls) {
+      expect(arg.data.adminUserId).toBe(ADMIN_ID);
+    }
+    return calls.map(([arg]) => arg.data.action);
+  }
+
+  it('writes an entry for every mutating admin action, with the acting admin', async () => {
+    const { service, prisma, queue } = setup();
+
+    prisma.user.findUnique.mockResolvedValue({
+      id: 'u2',
+      email: 'u2@x.io',
+      role: Role.USER,
+      documents: [],
+      collections: [],
+    });
+    prisma.user.count.mockResolvedValue(2);
+    prisma.user.update.mockResolvedValue({ id: 'u2', role: 'ADMIN' });
+    await service.updateUserRole(ADMIN_ID, 'u2', Role.ADMIN);
+    await service.deleteUser(ADMIN_ID, 'u2');
+
+    prisma.document.findUnique.mockResolvedValue({
+      id: 'doc-1',
+      userId: 'u2',
+      name: 'a.pdf',
+      status: 'FAILED',
+      filePath: 'uploads/a.pdf',
+      collections: [],
+    });
+    await service.deleteDocument(ADMIN_ID, 'doc-1');
+    await service.reprocessDocument(ADMIN_ID, 'doc-1');
+
+    queue.getJob.mockResolvedValue({
+      getState: jest.fn().mockResolvedValue('failed'),
+      retry: jest.fn().mockResolvedValue(undefined),
+      remove: jest.fn().mockResolvedValue(undefined),
+    });
+    await service.retryJob(ADMIN_ID, '7');
+    await service.removeJob(ADMIN_ID, '7');
+    queue.getJobs.mockResolvedValue([]);
+    queue.clean.mockResolvedValue([]);
+    await service.retryAllFailedJobs(ADMIN_ID);
+    await service.cleanCompletedJobs(ADMIN_ID);
+
+    expect(auditActions(prisma)).toEqual([
+      'user.role_change',
+      'user.delete',
+      'document.delete',
+      'document.reprocess',
+      'job.retry',
+      'job.remove',
+      'job.retry_failed',
+      'job.clean_completed',
+    ]);
+  });
+
+  it('audit write failure never fails the admin operation', async () => {
+    const { service, prisma, queue } = setup();
+    prisma.adminAuditLog.create.mockRejectedValue(new Error('db down'));
+    queue.getJob.mockResolvedValue({
+      getState: jest.fn().mockResolvedValue('failed'),
+      retry: jest.fn().mockResolvedValue(undefined),
+    });
+    await expect(service.retryJob(ADMIN_ID, '7')).resolves.toEqual({
+      success: true,
+    });
+  });
+
+  it('getAuditLog resolves admin emails and falls back to the id', async () => {
+    const { service, prisma } = setup();
+    prisma.adminAuditLog.findMany.mockResolvedValue([
+      { id: 'a1', adminUserId: 'admin-1', action: 'user.delete' },
+      { id: 'a2', adminUserId: 'gone-admin', action: 'job.retry' },
+    ]);
+    prisma.adminAuditLog.count.mockResolvedValue(2);
+    prisma.user.findMany.mockResolvedValue([
+      { id: 'admin-1', email: 'root@x.io' },
+    ]);
+
+    const result = await service.getAuditLog(1, 20);
+    expect(result.total).toBe(2);
+    expect(result.entries[0].adminEmail).toBe('root@x.io');
+    expect(result.entries[1].adminEmail).toBe('gone-admin');
   });
 });

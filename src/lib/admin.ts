@@ -241,3 +241,24 @@ export async function cleanCompletedJobs(
 export async function getRagStats(accessToken: string): Promise<RagStats> {
   return apiFetch<RagStats>(accessToken, '/admin/rag-stats');
 }
+
+// ── Audit Log ─────────────────────────────────────────────────────────────
+
+export interface AdminAuditEntry {
+  id: string;
+  adminUserId: string;
+  adminEmail: string;
+  action: string;
+  targetType: string;
+  targetId: string;
+  metadata: Record<string, unknown> | null;
+  createdAt: string;
+}
+
+export async function getAuditLog(
+  accessToken: string,
+  page = 1,
+  limit = 20,
+): Promise<{ entries: AdminAuditEntry[]; total: number; page: number; limit: number }> {
+  return apiFetch(accessToken, `/admin/audit?page=${page}&limit=${limit}`);
+}

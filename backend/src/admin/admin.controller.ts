@@ -99,35 +99,50 @@ export class AdminController {
   }
 
   @Post('jobs/retry-failed')
-  async retryAllFailedJobs() {
-    return this.adminService.retryAllFailedJobs();
+  async retryAllFailedJobs(@CurrentUser() user: JwtPayload) {
+    return this.adminService.retryAllFailedJobs(user.sub);
   }
 
   @Post('jobs/clean')
-  async cleanCompletedJobs() {
-    return this.adminService.cleanCompletedJobs();
+  async cleanCompletedJobs(@CurrentUser() user: JwtPayload) {
+    return this.adminService.cleanCompletedJobs(user.sub);
   }
 
   @Post('jobs/:id/retry')
-  async retryJob(@Param('id') id: string) {
-    return this.adminService.retryJob(validJobId(id));
+  async retryJob(@CurrentUser() user: JwtPayload, @Param('id') id: string) {
+    return this.adminService.retryJob(user.sub, validJobId(id));
   }
 
   @Delete('jobs/:id')
-  async removeJob(@Param('id') id: string) {
-    return this.adminService.removeJob(validJobId(id));
+  async removeJob(@CurrentUser() user: JwtPayload, @Param('id') id: string) {
+    return this.adminService.removeJob(user.sub, validJobId(id));
   }
 
   // ── Document operations ───────────────────────────────────────────────────
 
   @Delete('documents/:id')
-  async deleteDocument(@Param('id') id: string) {
-    return this.adminService.deleteDocument(id);
+  async deleteDocument(
+    @CurrentUser() user: JwtPayload,
+    @Param('id') id: string,
+  ) {
+    return this.adminService.deleteDocument(user.sub, id);
   }
 
   @Post('documents/:id/reprocess')
-  async reprocessDocument(@Param('id') id: string) {
-    return this.adminService.reprocessDocument(id);
+  async reprocessDocument(
+    @CurrentUser() user: JwtPayload,
+    @Param('id') id: string,
+  ) {
+    return this.adminService.reprocessDocument(user.sub, id);
+  }
+
+  // ── Audit log ─────────────────────────────────────────────────────────────
+  // Read-only by design: audit entries are written by the service on every
+  // mutating admin action; there are no create/update/delete routes for them.
+
+  @Get('audit')
+  async getAuditLog(@Query() query: PagePaginationDto) {
+    return this.adminService.getAuditLog(query.page, query.limit);
   }
 
   // ── RAG Analytics ─────────────────────────────────────────────────────────

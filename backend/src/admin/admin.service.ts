@@ -12,7 +12,11 @@ import { PrismaService } from '../prisma/prisma.service.js';
 import { ChatCacheService } from '../rag/chat-cache.service.js';
 import { RagMetricsService } from '../rag/rag-metrics.service.js';
 import { collectionCacheScope } from '../collections/collections.service.js';
-import { DocumentStatus, Role } from '../../generated/prisma/client.js';
+import {
+  DocumentStatus,
+  Role,
+  type Prisma,
+} from '../../generated/prisma/client.js';
 
 const QUEUE_NAME = 'document-processing';
 const JOB_STATES = [
@@ -180,11 +184,17 @@ export class AdminService {
       await this.assertNotLastAdmin('demote');
     }
 
-    return this.prisma.user.update({
+    const updated = await this.prisma.user.update({
       where: { id: targetId },
       data: { role },
       select: { id: true, name: true, email: true, role: true },
     });
+    await this.audit(actingUserId, 'user.role_change', 'user', targetId, {
+      email: target.email,
+      from: target.role,
+      to: role,
+    });
+    return updated;
   }
 
   /**
@@ -238,7 +248,76 @@ export class AdminService {
         ),
       );
     }
+    await this.audit(actingUserId, 'user.delete', 'user', targetId, {
+      email: target.email,
+      documents: target.documents.length,
+    });
     return { success: true };
+  }
+
+  // ── Audit log ─────────────────────────────────────────────────────────────
+
+  /**
+   * Append an audit entry for a mutating admin action. The acting admin id
+   * comes from the JWT only (never from request bodies). Best-effort: an
+   * audit write failure is logged but never fails the admin operation.
+   */
+  private async audit(
+    adminUserId: string,
+    action: string,
+    targetType: string,
+    targetId: string,
+    metadata?: Prisma.InputJsonObject,
+  ): Promise<void> {
+    try {
+      await this.prisma.adminAuditLog.create({
+        data: {
+          adminUserId,
+          action,
+          targetType,
+          targetId,
+          ...(metadata ? { metadata } : {}),
+        },
+      });
+    } catch (err) {
+      this.logger.warn(
+        `Audit write failed for ${action} ${targetType}:${targetId}: ${err instanceof Error ? err.message : String(err)}`,
+      );
+    }
+  }
+
+  /** Newest-first audit entries; admin emails resolved at read time. */
+  async getAuditLog(page = 1, limit = 20) {
+    const skip = (page - 1) * limit;
+    const [entries, total] = await Promise.all([
+      this.prisma.adminAuditLog.findMany({
+        skip,
+        take: limit,
+        orderBy: { createdAt: 'desc' },
+      }),
+      this.prisma.adminAuditLog.count(),
+    ]);
+
+    const adminIds = [...new Set(entries.map((e) => e.adminUserId))];
+    const admins =
+      adminIds.length > 0
+        ? await this.prisma.user.findMany({
+            where: { id: { in: adminIds } },
+            select: { id: true, email: true },
+          })
+        : [];
+    const emailById = new Map(admins.map((a) => [a.id, a.email]));
+
+    return {
+      entries: entries.map((e) => ({
+        ...e,
+        // Deleted admin accounts fall back to their id.
+        adminEmail: emailById.get(e.adminUserId) ?? e.adminUserId,
+      })),
+      total,
+      page,
+      limit,
+    };
   }
 
   /** 409 when the system has a single ADMIN left (demoting/deleting it would lock everyone out). */
@@ -372,7 +451,7 @@ export class AdminService {
   }
 
   /** Re-run a FAILED job (BullMQ Job.retry moves it back to waiting). */
-  async retryJob(jobId: string) {
+  async retryJob(actingUserId: string, jobId: string) {
     const job = await this.findJobOr404(jobId);
     const state = await job.getState();
     if (state !== 'failed') {
@@ -381,10 +460,11 @@ export class AdminService {
       );
     }
     await job.retry();
+    await this.audit(actingUserId, 'job.retry', 'job', jobId);
     return { success: true };
   }
 
-  async removeJob(jobId: string) {
+  async removeJob(actingUserId: string, jobId: string) {
     const job = await this.findJobOr404(jobId);
     try {
       await job.remove();
@@ -394,13 +474,14 @@ export class AdminService {
         'Job could not be removed (it may be running)',
       );
     }
+    await this.audit(actingUserId, 'job.remove', 'job', jobId);
     return { success: true };
   }
 
-  async retryAllFailedJobs() {
+  async retryAllFailedJobs(actingUserId: string) {
+    let retried = 0;
     try {
       const failed = await this.docQueue.getJobs(['failed'], 0, -1);
-      let retried = 0;
       for (const job of failed) {
         try {
           await job.retry();
@@ -409,20 +490,27 @@ export class AdminService {
           // Job may have been removed/retried concurrently; skip it.
         }
       }
-      return { retried };
     } catch {
       throw new ConflictException('Queue unavailable');
     }
+    await this.audit(actingUserId, 'job.retry_failed', 'queue', QUEUE_NAME, {
+      retried,
+    });
+    return { retried };
   }
 
-  async cleanCompletedJobs() {
+  async cleanCompletedJobs(actingUserId: string) {
+    let cleaned = 0;
     try {
       // grace 0: clean everything completed, up to 1000 per call.
-      const cleaned = await this.docQueue.clean(0, 1000, 'completed');
-      return { cleaned: cleaned.length };
+      cleaned = (await this.docQueue.clean(0, 1000, 'completed')).length;
     } catch {
       throw new ConflictException('Queue unavailable');
     }
+    await this.audit(actingUserId, 'job.clean_completed', 'queue', QUEUE_NAME, {
+      cleaned,
+    });
+    return { cleaned };
   }
 
   // ── Document operations ───────────────────────────────────────────────────
@@ -434,7 +522,7 @@ export class AdminService {
    * from pre-delete membership). Share links are point-in-time snapshots
    * (never joined back to documents), so they are untouched by design.
    */
-  async deleteDocument(id: string) {
+  async deleteDocument(actingUserId: string, id: string) {
     const document = await this.prisma.document.findUnique({
       where: { id },
       include: {
@@ -473,6 +561,10 @@ export class AdminService {
         ),
       );
     }
+    await this.audit(actingUserId, 'document.delete', 'document', id, {
+      name: document.name,
+      ownerId: document.userId,
+    });
     return { success: true };
   }
 
@@ -481,7 +573,7 @@ export class AdminService {
    * FAILED-only and owner-scoped): clear chunks, reset to PENDING, enqueue.
    * The job processor invalidates the chat-cache scope when it finishes.
    */
-  async reprocessDocument(id: string) {
+  async reprocessDocument(actingUserId: string, id: string) {
     const document = await this.prisma.document.findUnique({ where: { id } });
     if (!document) throw new NotFoundException('Document not found');
     if (!document.filePath) {
@@ -507,6 +599,11 @@ export class AdminService {
       { attempts: 3, backoff: { type: 'exponential', delay: 2000 } },
     );
     this.logger.log(`Document ${id} re-queued for processing (admin).`);
+    await this.audit(actingUserId, 'document.reprocess', 'document', id, {
+      name: document.name,
+      ownerId: document.userId,
+      previousStatus: document.status,
+    });
     return { success: true };
   }
 

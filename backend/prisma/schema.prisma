@@ -194,3 +194,20 @@ model SharedAnswer {
   @@index([userId])
   @@map("shared_answers")
 }
+
+// Phase 14: admin operation audit trail. Append-only by design — rows are
+// written by AdminService on every mutating admin action and exposed
+// read-only via GET /admin/audit; there are no mutating routes for them.
+// No FK to users so the trail survives admin account deletion.
+model AdminAuditLog {
+  id          String   @id @default(cuid())
+  adminUserId String   @map("admin_user_id")
+  action      String
+  targetType  String   @map("target_type")
+  targetId    String   @map("target_id")
+  metadata    Json?
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  @@index([createdAt])
+  @@map("admin_audit_log")
+}
