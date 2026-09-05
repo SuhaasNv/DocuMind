@@ -18,8 +18,15 @@ import {
   retryAllFailedJobs,
   cleanCompletedJobs,
   getAuditLog,
+  getEvalRuns,
+  getEvalRun,
   type DocStatus,
   type AdminUser,
+  type EvalRunKind,
+  type RetrievalEvalSummary,
+  type AnswerEvalSummary,
+  type RetrievalEvalCaseResult,
+  type AnswerEvalCaseResult,
 } from '@/lib/admin';
 import { useAppStore } from '@/stores/useAppStore';
 import {
@@ -48,6 +55,9 @@ import {
   Lightbulb,
   Link2,
   ScrollText,
+  FlaskConical,
+  ShieldCheck,
+  ShieldX,
 } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
@@ -78,6 +88,13 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+} from '@/components/ui/dialog';
+import {
   BarChart,
   Bar,
   XAxis,
@@ -92,7 +109,7 @@ import { cn } from '@/lib/utils';
 
 // ── Types & constants ─────────────────────────────────────────────────────
 
-type Tab = 'overview' | 'users' | 'documents' | 'jobs' | 'analytics' | 'audit';
+type Tab = 'overview' | 'users' | 'documents' | 'jobs' | 'analytics' | 'audit' | 'evals';
 
 const PAGE_SIZE = 15;
 
@@ -222,7 +239,7 @@ export default function AdminDashboard() {
   const tabFromUrl = searchParams.get('tab') as Tab | null;
   const [activeTab, setActiveTab] = useState<Tab>(
     tabFromUrl &&
-      ['overview', 'users', 'documents', 'jobs', 'analytics', 'audit'].includes(tabFromUrl)
+      ['overview', 'users', 'documents', 'jobs', 'analytics', 'audit', 'evals'].includes(tabFromUrl)
       ? tabFromUrl
       : 'overview',
   );
@@ -231,7 +248,7 @@ export default function AdminDashboard() {
   useEffect(() => {
     if (
       tabFromUrl &&
-      ['overview', 'users', 'documents', 'jobs', 'analytics', 'audit'].includes(tabFromUrl)
+      ['overview', 'users', 'documents', 'jobs', 'analytics', 'audit', 'evals'].includes(tabFromUrl)
     ) {
       setActiveTab(tabFromUrl);
     }
@@ -246,6 +263,9 @@ export default function AdminDashboard() {
   const [userPage, setUserPage] = useState(1);
   const [docPage, setDocPage] = useState(1);
   const [auditPage, setAuditPage] = useState(1);
+  const [evalPage, setEvalPage] = useState(1);
+  const [evalKindFilter, setEvalKindFilter] = useState<EvalRunKind | undefined>();
+  const [selectedEvalRunId, setSelectedEvalRunId] = useState<string | null>(null);
   const [docStatusFilter, setDocStatusFilter] = useState<DocStatus | undefined>();
   const [jobState, setJobState] = useState<'active' | 'waiting' | 'failed' | 'completed' | 'delayed'>('active');
   const [userSearch, setUserSearch] = useState('');
@@ -317,6 +337,18 @@ export default function AdminDashboard() {
     queryKey: ['adminAudit', auditPage],
     queryFn: () => getAuditLog(accessToken!, auditPage, PAGE_SIZE),
     enabled,
+  });
+
+  const { data: evalRunsData, isLoading: evalRunsLoading } = useQuery({
+    queryKey: ['adminEvalRuns', evalPage, evalKindFilter],
+    queryFn: () => getEvalRuns(accessToken!, evalPage, PAGE_SIZE, evalKindFilter),
+    enabled,
+  });
+
+  const { data: evalRunDetail, isLoading: evalRunDetailLoading } = useQuery({
+    queryKey: ['adminEvalRun', selectedEvalRunId],
+    queryFn: () => getEvalRun(accessToken!, selectedEvalRunId!),
+    enabled: enabled && !!selectedEvalRunId,
   });
 
   // Mutations
@@ -448,6 +480,7 @@ export default function AdminDashboard() {
     { id: 'jobs', label: 'Jobs', icon: Briefcase },
     { id: 'analytics', label: 'Analytics', icon: TrendingUp },
     { id: 'audit', label: 'Audit', icon: ScrollText },
+    { id: 'evals', label: 'Evals', icon: FlaskConical },
   ];
 
   return (
@@ -1358,7 +1391,230 @@ export default function AdminDashboard() {
             </CardContent>
           </Card>
         )}
+
+        {activeTab === 'evals' && (
+          <Card className="border-border">
+            <CardHeader className="pb-3">
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                <div className="flex flex-col gap-1">
+                  <CardTitle className="text-base flex items-center gap-2">
+                    <FlaskConical className="w-4 h-4" />
+                    Eval Harness Runs
+                    {evalRunsData && (
+                      <span className="text-sm font-normal text-muted-foreground">
+                        · {evalRunsData.total} total
+                      </span>
+                    )}
+                  </CardTitle>
+                  <p className="text-xs text-muted-foreground">
+                    Retrieval and answer-quality/injection-resistance runs, newest first. Written by{' '}
+                    <code className="font-mono">backend/eval/run-*.ts</code>.
+                  </p>
+                </div>
+                <div className="flex gap-1">
+                  {(
+                    [
+                      [undefined, 'All'],
+                      ['RETRIEVAL', 'Retrieval'],
+                      ['ANSWER', 'Answer'],
+                    ] as const
+                  ).map(([kind, label]) => (
+                    <Button
+                      key={label}
+                      variant={evalKindFilter === kind ? 'default' : 'outline'}
+                      size="sm"
+                      onClick={() => {
+                        setEvalKindFilter(kind);
+                        setEvalPage(1);
+                      }}
+                    >
+                      {label}
+                    </Button>
+                  ))}
+                </div>
+              </div>
+            </CardHeader>
+            <CardContent>
+              <div className="rounded-lg border border-border overflow-hidden">
+                <Table>
+                  <TableHeader>
+                    <TableRow className="bg-muted/50">
+                      <TableHead>When</TableHead>
+                      <TableHead>Kind</TableHead>
+                      <TableHead>Status</TableHead>
+                      <TableHead>Key metric</TableHead>
+                      <TableHead>Duration</TableHead>
+                      <TableHead>Commit</TableHead>
+                      <TableHead>Triggered by</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {evalRunsLoading && (
+                      <TableRow>
+                        <TableCell colSpan={7} className="text-center py-8 text-muted-foreground">
+                          Loading…
+                        </TableCell>
+                      </TableRow>
+                    )}
+                    {!evalRunsLoading && evalRunsData?.runs?.length === 0 && (
+                      <TableRow>
+                        <TableCell colSpan={7} className="text-center py-8 text-muted-foreground">
+                          No eval runs yet. Run{' '}
+                          <code className="font-mono">npm run eval:retrieval</code> or{' '}
+                          <code className="font-mono">npm run eval:answer</code> in{' '}
+                          <code className="font-mono">backend/</code>.
+                        </TableCell>
+                      </TableRow>
+                    )}
+                    {evalRunsData?.runs?.map((run) => {
+                      const isRetrieval = run.kind === 'RETRIEVAL';
+                      const summary = run.summary as RetrievalEvalSummary & AnswerEvalSummary;
+                      return (
+                        <TableRow
+                          key={run.id}
+                          className="hover:bg-muted/30 cursor-pointer"
+                          onClick={() => setSelectedEvalRunId(run.id)}
+                        >
+                          <TableCell className="text-muted-foreground text-sm whitespace-nowrap">
+                            {new Date(run.createdAt).toLocaleString()}
+                          </TableCell>
+                          <TableCell>
+                            <Badge variant="outline" className="border-border text-foreground text-xs">
+                              {run.kind}
+                            </Badge>
+                          </TableCell>
+                          <TableCell>
+                            {run.passed ? (
+                              <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-xs font-medium border bg-green-500/10 text-green-400 border-green-500/20">
+                                <ShieldCheck className="w-3 h-3" /> Passed
+                              </span>
+                            ) : (
+                              <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-xs font-medium border bg-red-500/10 text-red-400 border-red-500/20">
+                                <ShieldX className="w-3 h-3" /> Failed
+                              </span>
+                            )}
+                          </TableCell>
+                          <TableCell className="text-sm">
+                            {isRetrieval
+                              ? `recall@k ${(summary.recall * 100).toFixed(0)}% · MRR ${summary.mrr?.toFixed(2)}`
+                              : `groundedness ${summary.avgGroundedness?.toFixed(1)}/5 · injection ${summary.injectionResisted}/${summary.injectionCaseCount} resisted`}
+                          </TableCell>
+                          <TableCell className="text-muted-foreground text-sm whitespace-nowrap">
+                            {(run.durationMs / 1000).toFixed(1)}s
+                          </TableCell>
+                          <TableCell className="text-muted-foreground text-xs font-mono">
+                            {run.gitSha ?? '-'}
+                          </TableCell>
+                          <TableCell className="text-muted-foreground text-xs">
+                            {run.triggeredBy}
+                          </TableCell>
+                        </TableRow>
+                      );
+                    })}
+                  </TableBody>
+                </Table>
+              </div>
+
+              <Pagination
+                page={evalPage}
+                total={evalRunsData?.total ?? 0}
+                pageSize={PAGE_SIZE}
+                onPage={setEvalPage}
+              />
+            </CardContent>
+          </Card>
+        )}
       </div>
+
+      {/* ── Eval run detail ──────────────────────────────────────────────── */}
+      <Dialog open={!!selectedEvalRunId} onOpenChange={(open) => !open && setSelectedEvalRunId(null)}>
+        <DialogContent className="max-w-3xl max-h-[80vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <FlaskConical className="w-4 h-4" />
+              Eval run detail
+            </DialogTitle>
+            <DialogDescription>
+              {evalRunDetail
+                ? `${evalRunDetail.kind} · ${evalRunDetail.passed ? 'passed' : 'failed'} · ${new Date(evalRunDetail.createdAt).toLocaleString()}`
+                : 'Loading…'}
+            </DialogDescription>
+          </DialogHeader>
+          {evalRunDetailLoading && (
+            <p className="text-sm text-muted-foreground py-4">Loading…</p>
+          )}
+          {evalRunDetail && evalRunDetail.kind === 'RETRIEVAL' && (
+            <div className="space-y-3">
+              <div className="rounded-lg border border-border overflow-hidden">
+                <Table>
+                  <TableHeader>
+                    <TableRow className="bg-muted/50">
+                      <TableHead>Case</TableHead>
+                      <TableHead>Found</TableHead>
+                      <TableHead>Rank</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {(evalRunDetail.cases as RetrievalEvalCaseResult[]).map((c) => (
+                      <TableRow key={c.id}>
+                        <TableCell className="font-mono text-xs">{c.id}</TableCell>
+                        <TableCell>
+                          {c.found ? (
+                            <span className="text-green-400 text-xs">yes</span>
+                          ) : (
+                            <span className="text-red-400 text-xs">NO</span>
+                          )}
+                        </TableCell>
+                        <TableCell className="text-muted-foreground text-xs">{c.rank ?? '-'}</TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </div>
+            </div>
+          )}
+          {evalRunDetail && evalRunDetail.kind === 'ANSWER' && (
+            <div className="space-y-4">
+              {(evalRunDetail.cases as AnswerEvalCaseResult[]).map((c) => (
+                <div key={c.id} className="rounded-lg border border-border p-3 space-y-2">
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="font-mono text-xs text-muted-foreground">{c.id}</span>
+                    <div className="flex items-center gap-2">
+                      <Badge variant="outline" className="text-xs">
+                        {c.kind}
+                      </Badge>
+                      {c.hardFailMatches.length > 0 ? (
+                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium border bg-red-500/10 text-red-400 border-red-500/20">
+                          <ShieldX className="w-3 h-3" /> HARD FAIL
+                        </span>
+                      ) : (
+                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium border bg-green-500/10 text-green-400 border-green-500/20">
+                          <ShieldCheck className="w-3 h-3" /> clean
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                  <p className="text-sm text-foreground">{c.query}</p>
+                  <p className="text-xs text-muted-foreground whitespace-pre-wrap">{c.answer}</p>
+                  <div className="flex flex-wrap gap-3 text-xs text-muted-foreground">
+                    <span>groundedness {c.verdict.groundedness}/5</span>
+                    <span>citationValid {c.verdict.citationValid ? 'yes' : 'no'}</span>
+                    <span>mentionsCovered {c.verdict.mentionsCovered ? 'yes' : 'no'}</span>
+                  </div>
+                  {c.hardFailMatches.length > 0 && (
+                    <p className="text-xs text-red-400">
+                      leaked/forbidden: {c.hardFailMatches.join(', ')}
+                    </p>
+                  )}
+                  {c.verdict.notes && (
+                    <p className="text-xs text-muted-foreground italic">{c.verdict.notes}</p>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
 
       {/* ── Delete user confirmation ─────────────────────────────────────── */}
       <AlertDialog

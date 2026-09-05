@@ -22,6 +22,7 @@ import { UpdateRoleDto } from './dto/update-role.dto.js';
 import {
   AdminUsersQueryDto,
   AdminDocumentsQueryDto,
+  AdminEvalRunsQueryDto,
 } from './dto/list-query.dto.js';
 import { PagePaginationDto } from '../common/dto/pagination.dto.js';
 
@@ -143,6 +144,20 @@ export class AdminController {
   @Get('audit')
   async getAuditLog(@Query() query: PagePaginationDto) {
     return this.adminService.getAuditLog(query.page, query.limit);
+  }
+
+  // ── Eval harness runs ─────────────────────────────────────────────────────
+  // Read-only: rows are written directly to the DB by backend/eval/run-*.ts,
+  // not through this API.
+
+  @Get('eval-runs')
+  async getEvalRuns(@Query() query: AdminEvalRunsQueryDto) {
+    return this.adminService.getEvalRuns(query.page, query.limit, query.kind);
+  }
+
+  @Get('eval-runs/:id')
+  async getEvalRun(@Param('id') id: string) {
+    return this.adminService.getEvalRun(id);
   }
 
   // ── RAG Analytics ─────────────────────────────────────────────────────────

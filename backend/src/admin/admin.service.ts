@@ -320,6 +320,45 @@ export class AdminService {
     };
   }
 
+  // ── Eval harness runs ────────────────────────────────────────────────────
+  // Rows are written directly by backend/eval/run-*.ts (a standalone script,
+  // not this API) via PrismaClient once a run finishes. Read-only here —
+  // there are no mutating routes, same as the audit log.
+
+  async getEvalRuns(page = 1, limit = 20, kind?: 'RETRIEVAL' | 'ANSWER') {
+    const skip = (page - 1) * limit;
+    const [runs, total] = await Promise.all([
+      this.prisma.evalRun.findMany({
+        where: kind ? { kind } : undefined,
+        skip,
+        take: limit,
+        orderBy: { createdAt: 'desc' },
+        // List view omits `cases` (can be large); getEvalRun fetches it.
+        select: {
+          id: true,
+          kind: true,
+          passed: true,
+          baseUrl: true,
+          gitSha: true,
+          triggeredBy: true,
+          startedAt: true,
+          finishedAt: true,
+          durationMs: true,
+          summary: true,
+          createdAt: true,
+        },
+      }),
+      this.prisma.evalRun.count({ where: kind ? { kind } : undefined }),
+    ]);
+    return { runs, total, page, limit };
+  }
+
+  async getEvalRun(id: string) {
+    const run = await this.prisma.evalRun.findUnique({ where: { id } });
+    if (!run) throw new NotFoundException('Eval run not found');
+    return run;
+  }
+
   /** 409 when the system has a single ADMIN left (demoting/deleting it would lock everyone out). */
   private async assertNotLastAdmin(action: 'demote' | 'delete'): Promise<void> {
     const admins = await this.prisma.user.count({

@@ -262,3 +262,84 @@ export async function getAuditLog(
 ): Promise<{ entries: AdminAuditEntry[]; total: number; page: number; limit: number }> {
   return apiFetch(accessToken, `/admin/audit?page=${page}&limit=${limit}`);
 }
+
+// ── Eval harness runs ────────────────────────────────────────────────────
+// Read-only: rows are written by backend/eval/run-*.ts directly to the DB,
+// not through this API.
+
+export type EvalRunKind = 'RETRIEVAL' | 'ANSWER';
+
+/** Aggregate metrics — shape differs by kind (see backend/eval/lib/persist-run.ts). */
+export interface RetrievalEvalSummary {
+  recall: number;
+  mrr: number;
+  threshold: number;
+  caseCount: number;
+}
+export interface AnswerEvalSummary {
+  avgGroundedness: number;
+  groundednessThreshold: number;
+  citationRate: number;
+  citationRateThreshold: number;
+  qualityCaseCount: number;
+  injectionCaseCount: number;
+  injectionResisted: number;
+  hardFailedCaseIds: string[];
+}
+
+export interface AdminEvalRunListItem {
+  id: string;
+  kind: EvalRunKind;
+  passed: boolean;
+  baseUrl: string;
+  gitSha: string | null;
+  triggeredBy: string;
+  startedAt: string;
+  finishedAt: string;
+  durationMs: number;
+  summary: RetrievalEvalSummary | AnswerEvalSummary;
+  createdAt: string;
+}
+
+export interface RetrievalEvalCaseResult {
+  id: string;
+  found: boolean;
+  rank: number | null;
+}
+export interface AnswerEvalCaseResult {
+  id: string;
+  kind: 'quality' | 'injection';
+  query: string;
+  answer: string;
+  mustMention: string[];
+  forbiddenSubstrings: string[];
+  hardFailMatches: string[];
+  verdict: {
+    groundedness: number;
+    citationValid: boolean;
+    mentionsCovered: boolean;
+    notes: string;
+  };
+}
+
+export interface AdminEvalRunDetail extends AdminEvalRunListItem {
+  cases: RetrievalEvalCaseResult[] | AnswerEvalCaseResult[];
+}
+
+export async function getEvalRuns(
+  accessToken: string,
+  page = 1,
+  limit = 20,
+  kind?: EvalRunKind,
+): Promise<{ runs: AdminEvalRunListItem[]; total: number; page: number; limit: number }> {
+  const params = new URLSearchParams({ page: String(page), limit: String(limit) });
+  if (kind) params.set('kind', kind);
+  return apiFetch(accessToken, `/admin/eval-runs?${params}`);
+}
+
+export async function getEvalRun(
+  accessToken: string,
+  id: string,
+): Promise<AdminEvalRunDetail> {
+  return apiFetch(accessToken, `/admin/eval-runs/${id}`);
+}

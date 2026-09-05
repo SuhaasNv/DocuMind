@@ -230,3 +230,31 @@ model ApiToken {
   @@index([userId])
   @@map("api_tokens")
 }
+
+// Eval harness result trail. Written directly by backend/eval/run-*.ts
+// (standalone scripts using PrismaClient, not the running API) once a run
+// finishes; exposed read-only via GET /admin/eval-runs for the admin panel.
+// `summary` and `cases` are Json because retrieval and answer runs report
+// different metrics/case shapes — the admin UI renders by `kind`.
+enum EvalRunKind {
+  RETRIEVAL
+  ANSWER
+}
+
+model EvalRun {
+  id          String      @id @default(cuid())
+  kind        EvalRunKind
+  passed      Boolean
+  baseUrl     String      @map("base_url")
+  gitSha      String?     @map("git_sha")
+  triggeredBy String      @default("local") @map("triggered_by")
+  startedAt   DateTime    @map("started_at")
+  finishedAt  DateTime    @map("finished_at")
+  durationMs  Int         @map("duration_ms")
+  summary     Json
+  cases       Json
+  createdAt   DateTime    @default(now()) @map("created_at")
+
+  @@index([kind, createdAt])
+  @@map("eval_runs")
+}
