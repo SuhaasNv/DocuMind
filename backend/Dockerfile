@@ -1,3 +1,8 @@
+# Railway (documind-api service): Root Directory = "backend", Dockerfile Path =
+# "backend/Dockerfile" (dockerfilePath is repo-root-relative, NOT relative to
+# Root Directory — a mismatch here silently builds the wrong Dockerfile, since
+# the repo also has a root-level Dockerfile for the documind-web frontend).
+
 # ── Dependencies layer ───────────────────────────────────────────────────────
 # Cached by Docker as long as package.json / package-lock.json are unchanged.
 # Only reinstalls when the lockfile actually changes — not on every source edit.
