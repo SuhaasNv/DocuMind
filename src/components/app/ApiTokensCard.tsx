@@ -18,6 +18,7 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog';
 import { getApiBaseUrl } from '@/lib/api';
+import McpConnectInstructions from '@/components/app/McpConnectInstructions';
 import { Check, Copy, KeyRound, ShieldOff } from 'lucide-react';
 
 interface ApiTokenListItem {
@@ -239,7 +240,7 @@ const ApiTokensCard = ({ accessToken }: ApiTokensCardProps) => {
           if (!open) setCreatedToken(null);
         }}
       >
-        <DialogContent className="sm:max-w-md">
+        <DialogContent className="sm:max-w-lg max-h-[85vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>Token created</DialogTitle>
             <DialogDescription>
@@ -265,6 +266,16 @@ const ApiTokensCard = ({ accessToken }: ApiTokensCardProps) => {
               {copied ? 'Copied' : 'Copy'}
             </Button>
           </div>
+
+          {createdToken && (
+            <div className="pt-2 border-t border-border/50">
+              <p className="text-xs font-medium text-foreground mb-3">
+                Connect Claude with this token
+              </p>
+              <McpConnectInstructions token={createdToken.token} />
+            </div>
+          )}
+
           <DialogFooter>
             <Button onClick={() => setCreatedToken(null)}>Done</Button>
           </DialogFooter>
