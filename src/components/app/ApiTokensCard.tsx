@@ -17,6 +17,16 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
 import { getApiBaseUrl } from '@/lib/api';
 import McpConnectInstructions from '@/components/app/McpConnectInstructions';
 import { Check, Copy, KeyRound, ShieldOff } from 'lucide-react';
@@ -52,6 +62,8 @@ const ApiTokensCard = ({ accessToken }: ApiTokensCardProps) => {
   const [creating, setCreating] = useState(false);
   const [createdToken, setCreatedToken] = useState<CreatedApiToken | null>(null);
   const [copied, setCopied] = useState(false);
+  const [revokeTarget, setRevokeTarget] = useState<ApiTokenListItem | null>(null);
+  const [revoking, setRevoking] = useState(false);
 
   const base = getApiBaseUrl();
 
@@ -122,25 +134,25 @@ const ApiTokensCard = ({ accessToken }: ApiTokensCardProps) => {
     }
   };
 
-  const handleRevoke = async (token: ApiTokenListItem) => {
-    if (!base) return;
-    const confirmed = window.confirm(
-      `Revoke "${token.name}" (${token.display})? Anything using it will stop working immediately.`,
-    );
-    if (!confirmed) return;
+  const handleConfirmRevoke = async () => {
+    if (!base || !revokeTarget) return;
+    setRevoking(true);
     try {
-      const res = await fetch(`${base}/api-tokens/${token.id}/revoke`, {
+      const res = await fetch(`${base}/api-tokens/${revokeTarget.id}/revoke`, {
         method: 'POST',
         headers: authHeaders(),
       });
       if (res.ok) {
         toast.success('Token revoked');
         void loadTokens();
+        setRevokeTarget(null);
       } else {
         toast.error('Failed to revoke token');
       }
     } catch {
       toast.error('Network error, could not reach the backend');
+    } finally {
+      setRevoking(false);
     }
   };
 
@@ -220,7 +232,7 @@ const ApiTokensCard = ({ accessToken }: ApiTokensCardProps) => {
                       variant="outline"
                       size="sm"
                       className="gap-1.5 text-destructive hover:text-destructive shrink-0"
-                      onClick={() => void handleRevoke(t)}
+                      onClick={() => setRevokeTarget(t)}
                     >
                       <ShieldOff className="w-3.5 h-3.5" />
                       Revoke
@@ -281,6 +293,35 @@ const ApiTokensCard = ({ accessToken }: ApiTokensCardProps) => {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* Revoke confirmation */}
+      <AlertDialog
+        open={revokeTarget !== null}
+        onOpenChange={(open) => !open && setRevokeTarget(null)}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Revoke this token?</AlertDialogTitle>
+            <AlertDialogDescription>
+              {revokeTarget && (
+                <>
+                  Revoke "{revokeTarget.name}" ({revokeTarget.display})? Anything using it
+                  will stop working immediately.
+                </>
+              )}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={revoking}>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              onClick={() => void handleConfirmRevoke()}
+            >
+              Revoke
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </>
   );
 };
