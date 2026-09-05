@@ -116,7 +116,7 @@ const ApiTokensCard = ({ accessToken }: ApiTokensCardProps) => {
         toast.error(msg || 'Failed to create token');
       }
     } catch {
-      toast.error('Network error — could not reach the backend');
+      toast.error('Network error, could not reach the backend');
     } finally {
       setCreating(false);
     }
@@ -140,7 +140,7 @@ const ApiTokensCard = ({ accessToken }: ApiTokensCardProps) => {
         toast.error('Failed to revoke token');
       }
     } catch {
-      toast.error('Network error — could not reach the backend');
+      toast.error('Network error, could not reach the backend');
     }
   };
 
@@ -150,7 +150,7 @@ const ApiTokensCard = ({ accessToken }: ApiTokensCardProps) => {
       await navigator.clipboard.writeText(createdToken.token);
       setCopied(true);
     } catch {
-      toast.error('Could not copy — select the token and copy manually');
+      toast.error('Could not copy, select the token and copy manually');
     }
   };
 
@@ -244,7 +244,7 @@ const ApiTokensCard = ({ accessToken }: ApiTokensCardProps) => {
           <DialogHeader>
             <DialogTitle>Token created</DialogTitle>
             <DialogDescription>
-              Copy it now — you won&apos;t see this again.
+              Copy it now, you won&apos;t see this again.
             </DialogDescription>
           </DialogHeader>
           <div className="flex items-center gap-2 rounded-lg border border-border bg-background/60 p-3">

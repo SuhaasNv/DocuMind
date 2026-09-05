@@ -53,7 +53,7 @@ const ConnectClaude = () => {
             <span className="w-2.5 h-2.5 rounded-full bg-primary/60" aria-hidden="true" />
             <span className="ml-2 flex items-center gap-1.5 font-mono text-xs text-muted-foreground">
               <Terminal className="w-3.5 h-3.5" aria-hidden="true" />
-              documind — mcp
+              documind, mcp
             </span>
           </div>
 

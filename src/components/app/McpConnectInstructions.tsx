@@ -113,6 +113,11 @@ const McpConnectInstructions = ({
 
   return (
     <div className={className}>
+      <div className="mb-4">
+        <p className="text-xs font-medium text-muted-foreground mb-1.5">MCP Server URL</p>
+        <CodeBlock code={mcpUrl} copyLabel="Copy MCP server URL" />
+      </div>
+
       {!fixedTab && (
         <div
           className="flex border-b border-border overflow-x-auto mb-4"
@@ -152,11 +157,10 @@ const McpConnectInstructions = ({
               </li>
               <li>
                 <span className="font-mono text-primary mr-2">3.</span>
-                Paste the connector URL below and authorize with your{' '}
+                Paste the connector URL above and authorize with your{' '}
                 <span className="font-mono text-foreground">dm_</span> token.
               </li>
             </ol>
-            <CodeBlock code={mcpUrl} copyLabel="Copy connector URL" />
             {token && (
               <CodeBlock code={token} copyLabel="Copy API token" />
             )}
@@ -173,7 +177,7 @@ const McpConnectInstructions = ({
             {!token && (
               <p className="text-xs text-muted-foreground">
                 Replace <span className="font-mono text-foreground">YOUR_DM_TOKEN</span> with
-                an API token from Settings — it is sent as the{' '}
+                an API token from Settings. It is sent as the{' '}
                 <span className="font-mono">Authorization</span> header on every request.
               </p>
             )}
