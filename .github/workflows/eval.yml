@@ -1,0 +1,150 @@
+name: RAG eval harness
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'backend/src/**'
+      - 'backend/eval/**'
+      - 'backend/prisma/**'
+  workflow_dispatch:
+    inputs:
+      run_answer_eval:
+        description: 'Also run the answer/injection eval (costs LLM tokens: chat + judge)'
+        type: boolean
+        default: false
+
+jobs:
+  # Free, deterministic, no LLM calls for scoring (embeddings only, ~fractions
+  # of a cent). Runs on every PR that touches the RAG pipeline.
+  retrieval-eval:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: pgvector/pgvector:pg16
+        env:
+          POSTGRES_USER: user
+          POSTGRES_PASSWORD: password
+          POSTGRES_DB: insight_garden
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U user -d insight_garden"
+          --health-interval 5s --health-timeout 5s --health-retries 5
+      redis:
+        image: redis:7-alpine
+        ports: ['6379:6379']
+        options: >-
+          --health-cmd "redis-cli ping" --health-interval 5s --health-timeout 5s --health-retries 5
+    env:
+      DATABASE_URL: postgresql://user:password@localhost:5432/insight_garden
+      REDIS_HOST: localhost
+      REDIS_PORT: 6379
+      JWT_SECRET: ci-eval-harness-not-a-real-secret-key
+      CORS_ORIGIN: http://localhost:8080
+      PORT: 3000
+      # Real embeddings so dense retrieval is meaningful (cheap: a few dozen
+      # short chunks). LLM_PROVIDER stays stub — this job never calls chat.
+      EMBEDDING_PROVIDER: openai
+      OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+      LLM_PROVIDER: stub
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: backend/package-lock.json
+      - name: Install
+        working-directory: backend
+        run: npm ci
+      - name: Apply migrations
+        working-directory: backend
+        run: npx prisma migrate deploy
+      - name: Build backend
+        working-directory: backend
+        run: npm run build
+      - name: Start backend
+        working-directory: backend
+        run: |
+          node dist/main.js &
+          echo $! > backend.pid
+          for i in $(seq 1 30); do
+            curl -sf http://localhost:3000/health && exit 0
+            sleep 2
+          done
+          echo "Backend did not become healthy in time" >&2
+          exit 1
+      - name: Run retrieval eval
+        working-directory: backend
+        run: npm run eval:retrieval -- http://localhost:3000
+      - name: Stop backend
+        if: always()
+        working-directory: backend
+        run: kill "$(cat backend.pid)" 2>/dev/null || true
+
+  # Manual only: runs real chat completions plus an LLM judge — costs tokens
+  # twice over. Trigger via Actions → Run workflow → check "run_answer_eval".
+  answer-eval:
+    if: github.event_name == 'workflow_dispatch' && inputs.run_answer_eval
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: pgvector/pgvector:pg16
+        env:
+          POSTGRES_USER: user
+          POSTGRES_PASSWORD: password
+          POSTGRES_DB: insight_garden
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U user -d insight_garden"
+          --health-interval 5s --health-timeout 5s --health-retries 5
+      redis:
+        image: redis:7-alpine
+        ports: ['6379:6379']
+        options: >-
+          --health-cmd "redis-cli ping" --health-interval 5s --health-timeout 5s --health-retries 5
+    env:
+      DATABASE_URL: postgresql://user:password@localhost:5432/insight_garden
+      REDIS_HOST: localhost
+      REDIS_PORT: 6379
+      JWT_SECRET: ci-eval-harness-not-a-real-secret-key
+      CORS_ORIGIN: http://localhost:8080
+      PORT: 3000
+      EMBEDDING_PROVIDER: openai
+      OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+      LLM_PROVIDER: openai
+      JUDGE_LLM_PROVIDER: openai
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: backend/package-lock.json
+      - name: Install
+        working-directory: backend
+        run: npm ci
+      - name: Apply migrations
+        working-directory: backend
+        run: npx prisma migrate deploy
+      - name: Build backend
+        working-directory: backend
+        run: npm run build
+      - name: Start backend
+        working-directory: backend
+        run: |
+          node dist/main.js &
+          echo $! > backend.pid
+          for i in $(seq 1 30); do
+            curl -sf http://localhost:3000/health && exit 0
+            sleep 2
+          done
+          echo "Backend did not become healthy in time" >&2
+          exit 1
+      - name: Run answer + injection eval
+        working-directory: backend
+        run: npm run eval:answer -- http://localhost:3000
+      - name: Stop backend
+        if: always()
+        working-directory: backend
+        run: kill "$(cat backend.pid)" 2>/dev/null || true
