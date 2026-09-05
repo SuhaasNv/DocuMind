@@ -252,43 +252,47 @@ const ApiTokensCard = ({ accessToken }: ApiTokensCardProps) => {
           if (!open) setCreatedToken(null);
         }}
       >
-        <DialogContent className="sm:max-w-lg max-h-[85vh] overflow-y-auto">
-          <DialogHeader>
+        <DialogContent className="sm:max-w-lg max-h-[85vh] flex flex-col p-0 gap-0">
+          <DialogHeader className="p-6 pb-0 shrink-0">
             <DialogTitle>Token created</DialogTitle>
             <DialogDescription>
               Copy it now, you won&apos;t see this again.
             </DialogDescription>
           </DialogHeader>
-          <div className="flex items-center gap-2 rounded-lg border border-border bg-background/60 p-3">
-            <code className="flex-1 min-w-0 font-mono text-xs break-all">
-              {createdToken?.token}
-            </code>
-            <Button
-              variant="outline"
-              size="sm"
-              className="shrink-0 gap-1.5"
-              onClick={() => void handleCopyToken()}
-              aria-label={copied ? 'Copied' : 'Copy token'}
-            >
-              {copied ? (
-                <Check className="w-3.5 h-3.5 text-primary" />
-              ) : (
-                <Copy className="w-3.5 h-3.5" />
-              )}
-              {copied ? 'Copied' : 'Copy'}
-            </Button>
+
+          {/* Only this middle section scrolls — header and footer stay put. */}
+          <div className="flex-1 min-h-0 overflow-y-auto px-6 py-4 space-y-4">
+            <div className="flex items-center gap-2 rounded-lg border border-border bg-background/60 p-3">
+              <code className="flex-1 min-w-0 font-mono text-xs break-all">
+                {createdToken?.token}
+              </code>
+              <Button
+                variant="outline"
+                size="sm"
+                className="shrink-0 gap-1.5"
+                onClick={() => void handleCopyToken()}
+                aria-label={copied ? 'Copied' : 'Copy token'}
+              >
+                {copied ? (
+                  <Check className="w-3.5 h-3.5 text-primary" />
+                ) : (
+                  <Copy className="w-3.5 h-3.5" />
+                )}
+                {copied ? 'Copied' : 'Copy'}
+              </Button>
+            </div>
+
+            {createdToken && (
+              <div className="pt-2 border-t border-border/50">
+                <p className="text-xs font-medium text-foreground mb-3">
+                  Connect Claude with this token
+                </p>
+                <McpConnectInstructions token={createdToken.token} />
+              </div>
+            )}
           </div>
 
-          {createdToken && (
-            <div className="pt-2 border-t border-border/50">
-              <p className="text-xs font-medium text-foreground mb-3">
-                Connect Claude with this token
-              </p>
-              <McpConnectInstructions token={createdToken.token} />
-            </div>
-          )}
-
-          <DialogFooter>
+          <DialogFooter className="p-6 pt-4 border-t border-border/50 shrink-0">
             <Button onClick={() => setCreatedToken(null)}>Done</Button>
           </DialogFooter>
         </DialogContent>
